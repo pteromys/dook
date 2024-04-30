@@ -4,16 +4,8 @@
 //     https://dandavison.github.io/delta/grep.html
 //     https://docs.github.com/en/repositories/working-with-files/using-files/navigating-code-on-github#precise-and-search-based-navigation
 
-//use std::env;
-//use std::io;
-//use tree_sitter;
-extern crate base64;
 extern crate bytes;
 extern crate clap;
-extern crate serde;
-
-use base64::prelude::*;
-use serde::Deserialize;
 
 mod dumptree;
 mod paging;
@@ -52,61 +44,6 @@ struct Cli {
     dump: bool,
 }
 
-#[derive(Deserialize)]
-struct RipGrepString {
-    text: std::option::Option<String>,
-    bytes: std::option::Option<String>,
-}
-
-impl RipGrepString {
-    pub fn as_bytes(&self) -> bytes::Bytes {
-        if let Some(ref t) = self.text.as_deref() {
-            return bytes::Bytes::copy_from_slice(t.as_bytes());
-        }
-        if let Some(ref t) = self.bytes.as_deref() {
-            match BASE64_STANDARD.decode(t) {
-                Ok(v) => return bytes::Bytes::copy_from_slice(v.as_slice()),
-                Err(e) => {
-                    println!("{}", e);
-                }
-            }
-        }
-        return bytes::Bytes::new();
-    }
-}
-
-#[derive(Deserialize)]
-struct RipGrepSubmatch {
-    start: usize,
-    end: usize,
-}
-
-#[derive(Deserialize)]
-struct RipGrepMatchData {
-    path: RipGrepString,
-    line_number: usize,
-    absolute_offset: usize,
-    submatches: std::vec::Vec<RipGrepSubmatch>,
-}
-
-struct FileInterval {
-    line_number: usize,
-    absolute_offset: usize,
-    start: usize,
-    end: usize,
-}
-
-impl FileInterval {
-    pub const fn new(line_number: usize, absolute_offset: usize, start: usize, end: usize) -> Self {
-        Self {
-            line_number,
-            absolute_offset,
-            start,
-            end,
-        }
-    }
-}
-
 #[derive(Clone, Copy, Eq, PartialEq, Hash)]
 enum LanguageName {
     RUST,
@@ -124,30 +61,58 @@ struct LanguageInfo {
 }
 
 impl LanguageInfo {
-    pub fn new<Item: AsRef<str>, I1: IntoIterator<Item = Item>, I2: IntoIterator<Item = Item>, I3: IntoIterator<Item = Item>, I4: IntoIterator<Item = Item>>(language: tree_sitter::Language, match_patterns: I1, sibling_patterns: I2, parent_patterns: I3, parent_exclusions: I4) -> Result<Self, tree_sitter::QueryError> {
-        fn compile_queries<Item: AsRef<str>, II: IntoIterator<Item = Item>>(language: tree_sitter::Language, sources: II) -> Result<std::vec::Vec<tree_sitter::Query>, tree_sitter::QueryError> {
+    pub fn new<
+        Item: AsRef<str>,
+        I1: IntoIterator<Item = Item>,
+        I2: IntoIterator<Item = Item>,
+        I3: IntoIterator<Item = Item>,
+        I4: IntoIterator<Item = Item>,
+    >(
+        language: tree_sitter::Language,
+        match_patterns: I1,
+        sibling_patterns: I2,
+        parent_patterns: I3,
+        parent_exclusions: I4,
+    ) -> Result<Self, tree_sitter::QueryError> {
+        fn compile_queries<Item: AsRef<str>, II: IntoIterator<Item = Item>>(
+            language: tree_sitter::Language,
+            sources: II,
+        ) -> Result<std::vec::Vec<tree_sitter::Query>, tree_sitter::QueryError> {
             let mut last_error: std::option::Option<tree_sitter::QueryError> = None;
-            let result = sources.into_iter().map_while(|source| match tree_sitter::Query::new(language, source.as_ref()) {
-                Ok(q) => Some(q),
-                Err(e) => {
-                    last_error = Some(e);
-                    None
-                },
-            }).collect();
+            let result = sources
+                .into_iter()
+                .map_while(
+                    |source| match tree_sitter::Query::new(language, source.as_ref()) {
+                        Ok(q) => Some(q),
+                        Err(e) => {
+                            last_error = Some(e);
+                            None
+                        }
+                    },
+                )
+                .collect();
             match last_error {
                 Some(e) => Err(e),
                 None => Ok(result),
             }
         }
-        fn resolve_node_types<Item: AsRef<str>, II: IntoIterator<Item = Item>>(language: tree_sitter::Language, node_type_names: II) -> Result<std::vec::Vec<u16>, tree_sitter::QueryError> {
+        fn resolve_node_types<Item: AsRef<str>, II: IntoIterator<Item = Item>>(
+            language: tree_sitter::Language,
+            node_type_names: II,
+        ) -> Result<std::vec::Vec<u16>, tree_sitter::QueryError> {
             let mut last_unresolved: std::option::Option<String> = None;
-            let result = node_type_names.into_iter().map_while(|node_type_name| match language.id_for_node_kind(node_type_name.as_ref(), true) {
-                0 => {
-                    last_unresolved = Some(String::from(node_type_name.as_ref()));
-                    None
-                },
-                n => Some(n),
-            }).collect();
+            let result = node_type_names
+                .into_iter()
+                .map_while(|node_type_name| {
+                    match language.id_for_node_kind(node_type_name.as_ref(), true) {
+                        0 => {
+                            last_unresolved = Some(String::from(node_type_name.as_ref()));
+                            None
+                        }
+                        n => Some(n),
+                    }
+                })
+                .collect();
             match last_unresolved {
                 Some(e) => Err(tree_sitter::QueryError {
                     row: 0,
@@ -159,15 +124,23 @@ impl LanguageInfo {
                 None => Ok(result),
             }
         }
-        fn resolve_field_names<Item: AsRef<str>, II: IntoIterator<Item = Item>>(language: tree_sitter::Language, field_names: II) -> Result<std::vec::Vec<u16>, tree_sitter::QueryError> {
+        fn resolve_field_names<Item: AsRef<str>, II: IntoIterator<Item = Item>>(
+            language: tree_sitter::Language,
+            field_names: II,
+        ) -> Result<std::vec::Vec<u16>, tree_sitter::QueryError> {
             let mut last_unresolved: std::option::Option<String> = None;
-            let result = field_names.into_iter().map_while(|field_name| match language.field_id_for_name(field_name.as_ref()) {
-                None => {
-                    last_unresolved = Some(String::from(field_name.as_ref()));
-                    None
-                },
-                Some(n) => Some(n),
-            }).collect();
+            let result = field_names
+                .into_iter()
+                .map_while(
+                    |field_name| match language.field_id_for_name(field_name.as_ref()) {
+                        None => {
+                            last_unresolved = Some(String::from(field_name.as_ref()));
+                            None
+                        }
+                        Some(n) => Some(n),
+                    },
+                )
+                .collect();
             match last_unresolved {
                 Some(e) => Err(tree_sitter::QueryError {
                     row: 0,
@@ -183,8 +156,18 @@ impl LanguageInfo {
         let sibling_patterns = resolve_node_types(language, sibling_patterns);
         let parent_patterns = resolve_node_types(language, parent_patterns);
         let parent_exclusions = resolve_field_names(language, parent_exclusions);
-        match (match_patterns, sibling_patterns, parent_patterns, parent_exclusions) {
-            (Ok(match_patterns), Ok(sibling_patterns), Ok(parent_patterns), Ok(parent_exclusions)) => Ok(Self {
+        match (
+            match_patterns,
+            sibling_patterns,
+            parent_patterns,
+            parent_exclusions,
+        ) {
+            (
+                Ok(match_patterns),
+                Ok(sibling_patterns),
+                Ok(parent_patterns),
+                Ok(parent_exclusions),
+            ) => Ok(Self {
                 language,
                 match_patterns,
                 sibling_patterns,
@@ -206,19 +189,39 @@ fn get_language_info(language_name: LanguageName) -> Result<LanguageInfo, tree_s
         LanguageName::RUST => LanguageInfo::new(
             tree_sitter_rust::language(),
             [
-                "([function_item function_signature_item attribute_item inner_attribute_item let_declaration const_item enum_item impl_item macro_definition mod_item static_item struct_item trait_item type_item union_item]
-                    name: (_) @name) @def",
+                "[
+                    (function_item name: (_) @name)
+                    (function_signature_item name: (_) @name)
+                    (let_declaration pattern: [
+                        (identifier) @name
+                    ])
+                    (const_item name: (_) @name)
+                    (enum_item name: (_) @name)
+                    (impl_item type: (_) @name)
+                    (impl_item trait: (_) @name)
+                    (impl_item trait: (generic_type type: (_) @name))
+                    (impl_item trait: (generic_type type: (scoped_identifier name: (_) @name)))
+                    (impl_item trait: (generic_type type: (scoped_type_identifier name: (_) @name)))
+                    (impl_item trait: (scoped_type_identifier name: (_) @name))
+                    (macro_definition name: (_) @name)
+                    (mod_item name: (_) @name)
+                    (static_item name: (_) @name)
+                    (struct_item name: (_) @name)
+                    (trait_item name: (_) @name)
+                    (type_item name: (_) @name)
+                    (union_item name: (_) @name)
+                ] @def",
+                // TODO tree_sitter 0.22 will support alternation of node types, allowing better concision:
+                //"([function_item function_signature_item attribute_item inner_attribute_item let_declaration const_item enum_item impl_item macro_definition mod_item static_item struct_item trait_item type_item union_item]
+                //    name: (_) @name) @def",
             ],
-            [
-                "(comment) @context",
-            ],
-            [],
-            [],
+            ["line_comment", "block_comment"],
+            ["function_item", "impl_item"],
+            ["body"],
         ),
         LanguageName::PYTHON => LanguageInfo::new(
             tree_sitter_python::language(),
-            [
-                "[
+            ["[
                     (class_definition name: (_) @name) @def
                     (function_definition name: (_) @name) @def
                     (assignment left: (_) @name) @def
@@ -227,46 +230,63 @@ fn get_language_info(language_name: LanguageName) -> Result<LanguageInfo, tree_s
                     (typed_parameter . (identifier) @name) @def
                     (default_parameter name: (_) @name) @def
                     (typed_default_parameter name: (_) @name) @def
-                ]",
-            ],
-            [
-                "decorator",
-                "comment",
-            ],
-            [
-                "class_definition",
-                "function_definition",
-            ],
+                ]"],
+            ["decorator", "comment"],
+            ["class_definition", "function_definition"],
             ["body"],
         ),
         LanguageName::TS => LanguageInfo::new(
             tree_sitter_typescript::language_typescript(),
             [
-                "([function_signature method_signature abstract_method_signature abstract_class_declaration module interface_declaration]
-                    name: (_) @name) @def",
+                "[
+                    (function_signature name: (_) @name)
+                    (method_signature name: (_) @name)
+                    (abstract_method_signature name: (_) @name)
+                    (abstract_class_declaration name: (_) @name)
+                    (module name: (_) @name)
+                    (type_alias_declaration name: (_) @name)
+                    (interface_declaration name: (_) @name)
+                ] @def",
+                // TODO tree_sitter 0.22
+                //"([function_signature method_signature abstract_method_signature abstract_class_declaration module interface_declaration]
+                //    name: (_) @name) @def",
             ],
-            [
-                "comment",
-            ],
+            ["comment"],
             [],
             [],
         ),
         LanguageName::TSX => LanguageInfo::new(
             tree_sitter_typescript::language_tsx(),
             [
-                "([function_signature method_signature abstract_method_signature abstract_class_declaration module interface_declaration]
-                    name: (_) @name) @def"
+                "[
+                    (function_signature name: (_) @name)
+                    (function_declaration name: (_) @name)
+                    (method_signature name: (_) @name)
+                    (method_definition name: (_) @name)
+                    (abstract_method_signature name: (_) @name)
+                    (abstract_class_declaration name: (_) @name)
+                    (module name: (_) @name)
+                    (variable_declarator name: (_) @name)
+                    (class_declaration name: (_) @name)
+                    (type_alias_declaration name: (_) @name)
+                    (interface_declaration name: (_) @name)
+                ] @def",
+                // TODO tree_sitter 0.22
+                //"([function_signature method_signature abstract_method_signature abstract_class_declaration module interface_declaration]
+                //    name: (_) @name) @def"
             ],
+            ["comment"],
             [
-                "comment",
+                "function_declaration",
+                "method_definition",
+                "class_declaration",
             ],
-            [],
-            [],
+            ["body"],
         ),
     }
 }
 
-fn main() -> std::io::Result<()> {
+fn main() -> std::io::Result<std::process::ExitCode> {
     use clap::Parser;
     use std::io::Write;
 
@@ -277,54 +297,33 @@ fn main() -> std::io::Result<()> {
 
     // first-pass search with ripgrep
     let mut rg = std::process::Command::new("rg");
-    let output = rg
-        .arg("--json")
+    let filenames = match rg
+        .arg("-l")
+        .arg("-0")
         .arg(cli.pattern.as_str())
         .arg("./")
         .stderr(std::process::Stdio::inherit())
         .output()
-        .unwrap();
-    println!("ripgrep {}", output.status);
-
-    // convert ripgrep results into internal format
-    let mut matches: std::collections::HashMap<bytes::Bytes, std::vec::Vec<FileInterval>> =
-        std::collections::HashMap::new();
-    for rg_match in serde_json::Deserializer::from_slice(output.stdout.as_slice())
-        .into_iter::<serde_json::Value>()
-        // print errors if JSON read failed, then pick only the match lines
-        .filter_map(|value| match value {
-            Err(e) => {
-                println!("{}", e);
-                None
-            }
-            Ok(value) if value["type"] != "match" => None,
-            Ok(value) => Some(value),
-        })
-        // pick only lines that had the expected structure; print errors for the rest
-        .filter_map(|value| {
-            match serde_json::from_value::<RipGrepMatchData>(value["data"].clone()) {
-                Err(e) => {
-                    println!("{}", serde_json::to_string(&value).unwrap());
-                    println!("{}", e);
-                    None
-                }
-                Ok(rg_match) => Some(rg_match),
-            }
-        })
     {
-        let dest = matches
-            .entry(rg_match.path.as_bytes())
-            .or_insert_with(std::vec::Vec::new);
-
-        for submatch in rg_match.submatches.iter() {
-            dest.push(FileInterval::new(
-                rg_match.line_number,
-                rg_match.absolute_offset,
-                submatch.start,
-                submatch.end,
-            ))
+        Err(e) => return Err(e),
+        Ok(output) => {
+            if !output.status.success() {
+                if let Some(e) = output.status.code() {
+                    return Ok(std::process::ExitCode::from(e as u8)); // truncate to 8 bits
+                }
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("{}", output.status),
+                ));
+            }
+            output
+                .stdout
+                .split(|x| *x == 0)
+                .map(bytes::Bytes::copy_from_slice)
+                .filter(|f| f.len() > 0)
+                .collect::<std::vec::Vec<bytes::Bytes>>()
         }
-    }
+    };
 
     // infer syntax, then search with tree_sitter
     // TODO 0: add more languages
@@ -334,7 +333,7 @@ fn main() -> std::io::Result<()> {
         bytes::Bytes,
         std::vec::Vec<std::ops::Range<usize>>,
     > = std::collections::HashMap::new();
-    for (path, intervals) in matches.iter() {
+    for path in filenames {
         let language_name = if path.ends_with(b".rs") {
             LanguageName::RUST
         } else if path.ends_with(b".py") {
@@ -349,14 +348,12 @@ fn main() -> std::io::Result<()> {
         let language_info = get_language_info(language_name);
         match language_info {
             Err(e) => {
-                return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{}", e)));
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("{}", e),
+                ));
             }
             Ok(language_info) => {
-                println!(
-                    "{} matches at {}",
-                    intervals.len(),
-                    std::str::from_utf8(path).unwrap(),
-                );
                 let mut parser = tree_sitter::Parser::new();
                 parser.set_language(language_info.language).expect("Darn");
                 let source_code = std::fs::read(String::from_utf8(path.to_vec()).unwrap())?;
@@ -394,23 +391,42 @@ fn main() -> std::io::Result<()> {
                                     .entry(path.clone())
                                     .or_insert_with(std::vec::Vec::new);
                                 target_ranges.push(
-                                        capture.node.range().start_point.row
-                                            ..capture.node.range().end_point.row,
-                                    );
+                                    capture.node.range().start_point.row
+                                        ..capture.node.range().end_point.row,
+                                );
                                 let mut node = capture.node;
                                 loop {
                                     if let Some(sibling) = node.prev_sibling() {
-                                        if language_info.sibling_patterns.contains(&sibling.kind_id()) {
-                                            target_ranges.push(sibling.range().start_point.row..sibling.range().end_point.row);
+                                        if language_info
+                                            .sibling_patterns
+                                            .contains(&sibling.kind_id())
+                                        {
+                                            target_ranges.push(
+                                                sibling.range().start_point.row
+                                                    ..sibling.range().end_point.row,
+                                            );
                                             node = sibling;
                                             continue;
                                         }
                                     }
                                     if let Some(parent) = node.parent() {
                                         // TODO interval arithmetic
-                                        if language_info.parent_patterns.contains(&parent.kind_id()) {
+                                        if language_info.parent_patterns.contains(&parent.kind_id())
+                                        {
                                             let context_start = parent.range().start_point.row;
-                                            let context_end = context_start.max(language_info.parent_exclusions.iter().filter_map(|field_id| parent.child_by_field_id(*field_id)).map(|c| c.range().start_point.row.saturating_sub(1)).min().unwrap_or(parent.range().end_point.row));
+                                            let context_end = context_start.max(
+                                                language_info
+                                                    .parent_exclusions
+                                                    .iter()
+                                                    .filter_map(|field_id| {
+                                                        parent.child_by_field_id(*field_id)
+                                                    })
+                                                    .map(|c| {
+                                                        c.range().start_point.row.saturating_sub(1)
+                                                    })
+                                                    .min()
+                                                    .unwrap_or(parent.range().end_point.row),
+                                            );
                                             target_ranges.push(context_start..context_end);
                                         }
                                         node = parent;
@@ -422,7 +438,7 @@ fn main() -> std::io::Result<()> {
                         }
                     }
                 }
-            },
+            }
         }
     }
 
@@ -458,8 +474,13 @@ fn main() -> std::io::Result<()> {
             )
             .arg(std::str::from_utf8(path).unwrap());
         let output = cmd.stderr(std::process::Stdio::inherit()).output().unwrap();
-        println!("bat {}", output.status);
-        pager.write_all(&output.stdout).unwrap();
+        if let Err(e) = pager.write_all(&output.stdout) {
+            if e.kind() == std::io::ErrorKind::BrokenPipe {
+                // stdout is gone so let's just leave quietly
+                return Ok(std::process::ExitCode::SUCCESS);
+            }
+            break;
+        }
     }
     // wait for pager
     match pager.wait() {
@@ -469,5 +490,5 @@ fn main() -> std::io::Result<()> {
     }
 
     // yeah yeah whatever
-    Ok(())
+    Ok(std::process::ExitCode::SUCCESS)
 }

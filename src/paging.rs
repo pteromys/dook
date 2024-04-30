@@ -28,7 +28,7 @@ impl MaybePager {
         } else {
             None
         };
-        Self {pager}
+        Self { pager }
     }
 
     pub fn wait(&mut self) -> std::io::Result<i32> {
@@ -37,15 +37,16 @@ impl MaybePager {
             Some(child) => {
                 child.stdin.take();
                 match child.wait() {
-                    Ok(status) => {
-                        match status.code() {
-                            Some(c) => Ok(c),
-                            None => Err(std::io::Error::new(std::io::ErrorKind::Other, "Unknown exit status")),
-                        }
+                    Ok(status) => match status.code() {
+                        Some(c) => Ok(c),
+                        None => Err(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            "Unknown exit status",
+                        )),
                     },
                     Err(e) => Err(e),
                 }
-            },
+            }
         }
     }
 
