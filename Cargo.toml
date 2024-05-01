@@ -8,9 +8,9 @@ publish = false
 cc="*"
 
 [dependencies]
-bytes = { version = "1", features = ["serde"] }
 clap = { version = "4.5.4", features = ["derive", "unicode", "wrap_help"] }
 console = "0.15"
+os_str_bytes = "7.0"
 regex = "1.10"  # match ripgrep's default engine since we shell out to ripgrep
 tree-sitter = "0.20"
 tree-sitter-c = "0.20"

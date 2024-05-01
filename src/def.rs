@@ -4,8 +4,8 @@
 //     https://dandavison.github.io/delta/grep.html
 //     https://docs.github.com/en/repositories/working-with-files/using-files/navigating-code-on-github#precise-and-search-based-navigation
 
-extern crate bytes;
 extern crate clap;
+extern crate os_str_bytes;
 
 mod dumptree;
 mod paging;
@@ -288,59 +288,71 @@ fn get_language_info(language_name: LanguageName) -> Result<LanguageInfo, tree_s
 
 fn main() -> std::io::Result<std::process::ExitCode> {
     use clap::Parser;
+    use os_str_bytes::{OsStrBytes, OsStrBytesExt};
     use std::io::Write;
 
     // grab cli args
     let cli = Cli::parse();
-    let local_pattern =
-        regex::Regex::new(&(String::from("^") + cli.pattern.as_str() + "$")).unwrap();
+    let local_pattern = match regex::Regex::new(&(String::from("^") + cli.pattern.as_str() + "$")) {
+        Ok(p) => p,
+        Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, e)),
+    };
 
     // first-pass search with ripgrep
     let mut rg = std::process::Command::new("rg");
-    let filenames = match rg
+    let rg_output = rg
         .arg("-l")
         .arg("-0")
         .arg(cli.pattern.as_str())
         .arg("./")
         .stderr(std::process::Stdio::inherit())
-        .output()
-    {
-        Err(e) => return Err(e),
-        Ok(output) => {
-            if !output.status.success() {
-                if let Some(e) = output.status.code() {
-                    return Ok(std::process::ExitCode::from(e as u8)); // truncate to 8 bits
-                }
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("{}", output.status),
-                ));
-            }
-            output
-                .stdout
-                .split(|x| *x == 0)
-                .map(bytes::Bytes::copy_from_slice)
-                .filter(|f| f.len() > 0)
-                .collect::<std::vec::Vec<bytes::Bytes>>()
+        .output()?;
+    if !rg_output.status.success() {
+        if let Some(e) = rg_output.status.code() {
+            return Ok(std::process::ExitCode::from(e as u8)); // truncate to 8 bits
         }
-    };
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("{}", rg_output.status),
+        ));
+    }
+    // TODO is this even actually the right way to convert stdout to OsStr?
+    let mut last_undecoded: std::option::Option<std::vec::Vec<u8>> = None;
+    let filenames = rg_output
+        .stdout
+        .split(|x| *x == 0)
+        .filter_map(|x| match std::ffi::OsStr::from_io_bytes(x) {
+            None => {
+                last_undecoded = Some(std::vec::Vec::from(x));
+                None
+            }
+            Some(y) => Some(y.to_os_string()),
+        })
+        .filter(|f| !f.is_empty())
+        .collect::<std::vec::Vec<std::ffi::OsString>>();
+    if let Some(undecoded_bytes) = last_undecoded {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{:?}", undecoded_bytes),
+        ));
+    }
 
     // infer syntax, then search with tree_sitter
     // TODO 0: add more languages
     // TODO 1: sniff syntax by content
     //     maybe https://github.com/sharkdp/bat/blob/master/src/syntax_mapping.rs
     let mut print_ranges: std::collections::HashMap<
-        bytes::Bytes,
+        std::ffi::OsString,
         std::vec::Vec<std::ops::Range<usize>>,
     > = std::collections::HashMap::new();
     for path in filenames {
-        let language_name = if path.ends_with(b".rs") {
+        let language_name = if path.ends_with(".rs") {
             LanguageName::RUST
-        } else if path.ends_with(b".py") {
+        } else if path.ends_with(".py") {
             LanguageName::PYTHON
-        } else if path.ends_with(b".ts") {
+        } else if path.ends_with(".ts") {
             LanguageName::TS
-        } else if path.ends_with(b".tsx") {
+        } else if path.ends_with(".tsx") {
             LanguageName::TSX
         } else {
             continue;
@@ -356,7 +368,7 @@ fn main() -> std::io::Result<std::process::ExitCode> {
             Ok(language_info) => {
                 let mut parser = tree_sitter::Parser::new();
                 parser.set_language(language_info.language).expect("Darn");
-                let source_code = std::fs::read(String::from_utf8(path.to_vec()).unwrap())?;
+                let source_code = std::fs::read(&path)?;
                 let tree = parser.parse(&source_code, None).unwrap();
                 if cli.dump {
                     dumptree::dump_tree(&tree, source_code.as_slice());
@@ -472,9 +484,12 @@ fn main() -> std::io::Result<std::process::ExitCode> {
                     .into_iter()
                     .map(|x| format!("--line-range={}:{}", x.start + 1, x.end + 1)),
             )
-            .arg(std::str::from_utf8(path).unwrap());
-        let output = cmd.stderr(std::process::Stdio::inherit()).output().unwrap();
-        if let Err(e) = pager.write_all(&output.stdout) {
+            .arg(path);
+        let output = match cmd.stderr(std::process::Stdio::inherit()).output() {
+            Ok(output) => output.stdout,
+            Err(e) => std::vec::Vec::from(format!("Error reading {:?}: {}", path, e)),
+        };
+        if let Err(e) = pager.write_all(&output) {
             if e.kind() == std::io::ErrorKind::BrokenPipe {
                 // stdout is gone so let's just leave quietly
                 return Ok(std::process::ExitCode::SUCCESS);
