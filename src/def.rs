@@ -1,12 +1,15 @@
 // Prior art:
-//     symbex
+//     https://github.com/simonw/symbex
+//     https://github.com/newlinedotco/cq
 //     git grep -W
 //     https://dandavison.github.io/delta/grep.html
 //     https://docs.github.com/en/repositories/working-with-files/using-files/navigating-code-on-github#precise-and-search-based-navigation
 
 extern crate clap;
+extern crate directories;
 extern crate os_str_bytes;
 
+mod config;
 mod dumptree;
 mod paging;
 
@@ -28,6 +31,13 @@ impl Default for EnablementLevel {
 #[derive(clap::Parser, Debug)]
 /// Find a definition.
 struct Cli {
+    /// Regex to match against symbol names.
+    pattern: regex::Regex,
+
+    /// Config file path
+    #[arg(short, long, required = false)]
+    config: Option<std::ffi::OsString>,
+
     #[arg(long, value_enum, default_value_t)]
     color: EnablementLevel,
 
@@ -38,216 +48,9 @@ struct Cli {
     #[arg(short, long, action = clap::ArgAction::Count)]
     plain: u8,
 
-    /// Regex to match against symbol names.
-    pattern: regex::Regex,
-
     /// Dump the syntax tree of every matched file, for debugging extraction queries.
     #[arg(long)]
     dump: bool,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-enum LanguageName {
-    RUST,
-    PYTHON,
-    TS,
-    TSX,
-}
-
-struct LanguageInfo {
-    language: tree_sitter::Language,
-    match_patterns: std::vec::Vec<tree_sitter::Query>,
-    sibling_patterns: std::vec::Vec<u16>,
-    parent_patterns: std::vec::Vec<u16>,
-    parent_exclusions: std::vec::Vec<u16>,
-}
-
-impl LanguageInfo {
-    pub fn new<
-        Item: AsRef<str>,
-        I1: IntoIterator<Item = Item>,
-        I2: IntoIterator<Item = Item>,
-        I3: IntoIterator<Item = Item>,
-        I4: IntoIterator<Item = Item>,
-    >(
-        language: tree_sitter::Language,
-        match_patterns: I1,
-        sibling_patterns: I2,
-        parent_patterns: I3,
-        parent_exclusions: I4,
-    ) -> Result<Self, tree_sitter::QueryError> {
-        fn compile_queries<Item: AsRef<str>, II: IntoIterator<Item = Item>>(
-            language: tree_sitter::Language,
-            sources: II,
-        ) -> Result<std::vec::Vec<tree_sitter::Query>, tree_sitter::QueryError> {
-            sources
-                .into_iter()
-                .map(|source| tree_sitter::Query::new(language, source.as_ref()))
-                .collect()
-        }
-        fn resolve_node_types<Item: AsRef<str>, II: IntoIterator<Item = Item>>(
-            language: tree_sitter::Language,
-            node_type_names: II,
-        ) -> Result<std::vec::Vec<u16>, tree_sitter::QueryError> {
-            node_type_names
-                .into_iter()
-                .map(|node_type_name| {
-                    match language.id_for_node_kind(node_type_name.as_ref(), true) {
-                        0 => Err(tree_sitter::QueryError {
-                            row: 0,
-                            column: 0,
-                            offset: 0,
-                            message: format!("unknown node type: {:?}", node_type_name.as_ref()),
-                            kind: tree_sitter::QueryErrorKind::NodeType,
-                        }),
-                        n => Ok(n),
-                    }
-                })
-                .collect()
-        }
-        fn resolve_field_names<Item: AsRef<str>, II: IntoIterator<Item = Item>>(
-            language: tree_sitter::Language,
-            field_names: II,
-        ) -> Result<std::vec::Vec<u16>, tree_sitter::QueryError> {
-            field_names
-                .into_iter()
-                .map(|field_name| {
-                    language
-                        .field_id_for_name(field_name.as_ref())
-                        .ok_or_else(|| tree_sitter::QueryError {
-                            row: 0,
-                            column: 0,
-                            offset: 0,
-                            message: format!("unknown field name: {:?}", field_name.as_ref()),
-                            kind: tree_sitter::QueryErrorKind::Field,
-                        })
-                })
-                .collect()
-        }
-        Ok(Self {
-            language,
-            match_patterns: compile_queries(language, match_patterns)?,
-            sibling_patterns: resolve_node_types(language, sibling_patterns)?,
-            parent_patterns: resolve_node_types(language, parent_patterns)?,
-            parent_exclusions: resolve_field_names(language, parent_exclusions)?,
-        })
-    }
-}
-
-// TODO 2: support fenced code blocks in markdown and rst
-//     likely to require regrouping
-fn get_language_info(language_name: LanguageName) -> Result<LanguageInfo, tree_sitter::QueryError> {
-    match language_name {
-        LanguageName::RUST => LanguageInfo::new(
-            tree_sitter_rust::language(),
-            [
-                "[
-                    (function_item name: (_) @name)
-                    (function_signature_item name: (_) @name)
-                    (let_declaration pattern: [
-                        (identifier) @name
-                    ])
-                    (const_item name: (_) @name)
-                    (enum_item name: (_) @name)
-                    (impl_item type: (_) @name)
-                    (impl_item trait: (_) @name)
-                    (impl_item trait: (generic_type type: (_) @name))
-                    (impl_item trait: (generic_type type: (scoped_identifier name: (_) @name)))
-                    (impl_item trait: (generic_type type: (scoped_type_identifier name: (_) @name)))
-                    (impl_item trait: (scoped_type_identifier name: (_) @name))
-                    (macro_definition name: (_) @name)
-                    (mod_item name: (_) @name)
-                    (static_item name: (_) @name)
-                    (struct_item name: (_) @name)
-                    (trait_item name: (_) @name)
-                    (type_item name: (_) @name)
-                    (union_item name: (_) @name)
-                ] @def",
-                // TODO tree_sitter 0.22 will support alternation of node types, allowing better concision:
-                //"([function_item function_signature_item attribute_item inner_attribute_item let_declaration const_item enum_item impl_item macro_definition mod_item static_item struct_item trait_item type_item union_item]
-                //    name: (_) @name) @def",
-            ],
-            ["line_comment", "block_comment", "attribute_item"],
-            ["function_item", "impl_item"],
-            ["body"],
-        ),
-        LanguageName::PYTHON => LanguageInfo::new(
-            tree_sitter_python::language(),
-            ["[
-                    (class_definition name: (_) @name) @def
-                    (function_definition name: (_) @name) @def
-                    (assignment left: (_) @name) @def
-                    (parameters (identifier) @name @def)
-                    (lambda_parameters (identifier) @name @def)
-                    (typed_parameter . (identifier) @name) @def
-                    (default_parameter name: (_) @name) @def
-                    (typed_default_parameter name: (_) @name) @def
-                ]"],
-            ["decorator", "comment"],
-            ["class_definition", "function_definition"],
-            ["body"],
-        ),
-        LanguageName::TS => LanguageInfo::new(
-            tree_sitter_typescript::language_typescript(),
-            [
-                "[
-                    (function_signature name: (_) @name)
-                    (function_declaration name: (_) @name)
-                    (method_signature name: (_) @name)
-                    (method_definition name: (_) @name)
-                    (abstract_method_signature name: (_) @name)
-                    (abstract_class_declaration name: (_) @name)
-                    (module name: (_) @name)
-                    (variable_declarator name: (_) @name)
-                    (class_declaration name: (_) @name)
-                    (type_alias_declaration name: (_) @name)
-                    (interface_declaration name: (_) @name)
-                    (import_statement (import_clause (named_imports (import_specifier alias: (_) @name))))
-                    (export_statement (export_clause (export_specifier alias: (_) @name)))
-                ] @def",
-                // TODO tree_sitter 0.22
-                //"([function_signature method_signature abstract_method_signature abstract_class_declaration module interface_declaration]
-                //    name: (_) @name) @def",
-            ],
-            ["comment"],
-            [
-                "function_declaration",
-                "method_definition",
-                "class_declaration",
-            ],
-            ["body"],
-        ),
-        LanguageName::TSX => LanguageInfo::new(
-            tree_sitter_typescript::language_tsx(),
-            [
-                "[
-                    (function_signature name: (_) @name)
-                    (function_declaration name: (_) @name)
-                    (method_signature name: (_) @name)
-                    (method_definition name: (_) @name)
-                    (abstract_method_signature name: (_) @name)
-                    (abstract_class_declaration name: (_) @name)
-                    (module name: (_) @name)
-                    (variable_declarator name: (_) @name)
-                    (class_declaration name: (_) @name)
-                    (type_alias_declaration name: (_) @name)
-                    (interface_declaration name: (_) @name)
-                    (import_statement (import_clause (named_imports (import_specifier alias: (_) @name))))
-                    (export_statement (export_clause (export_specifier alias: (_) @name)))
-                ] @def",
-                // TODO tree_sitter 0.22
-                //"([function_signature method_signature abstract_method_signature abstract_class_declaration module interface_declaration]
-                //    name: (_) @name) @def"
-            ],
-            ["comment"],
-            [
-                "function_declaration",
-                "method_definition",
-                "class_declaration",
-            ],
-            ["body"],
-        ),
-    }
 }
 
 fn main() -> std::io::Result<std::process::ExitCode> {
@@ -255,12 +58,18 @@ fn main() -> std::io::Result<std::process::ExitCode> {
     use os_str_bytes::{OsStrBytes, OsStrBytesExt};
     use std::io::Write;
 
+    env_logger::init();
+
     // grab cli args
     let cli = Cli::parse();
     let local_pattern = match regex::Regex::new(&(String::from("^") + cli.pattern.as_str() + "$")) {
         Ok(p) => p,
         Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, e)),
     };
+
+    // load config
+    let custom_config = config::Config::load(cli.config)?;
+    let default_config = config::Config::load_default();
 
     // first-pass search with ripgrep
     let mut rg = std::process::Command::new("rg");
@@ -301,24 +110,38 @@ fn main() -> std::io::Result<std::process::ExitCode> {
     // infer syntax, then search with tree_sitter
     // TODO 0: add more languages
     // TODO 1: sniff syntax by content
+    //     maybe use shebangs
     //     maybe https://github.com/sharkdp/bat/blob/master/src/syntax_mapping.rs
     let mut print_ranges: std::collections::HashMap<
         std::ffi::OsString,
         std::vec::Vec<std::ops::Range<usize>>,
     > = std::collections::HashMap::new();
     for path in filenames {
+        // TODO group by language and do a second pass with language-specific regexes?
         let language_name = if path.ends_with(".rs") {
-            LanguageName::RUST
+            config::LanguageName::RUST
         } else if path.ends_with(".py") {
-            LanguageName::PYTHON
+            config::LanguageName::PYTHON
         } else if path.ends_with(".ts") {
-            LanguageName::TS
+            config::LanguageName::TS
         } else if path.ends_with(".tsx") {
-            LanguageName::TSX
+            config::LanguageName::TSX
         } else {
             continue;
         };
-        let language_info = get_language_info(language_name);
+        let language_info = custom_config
+            .as_ref()
+            .and_then(|c| c.get_language_info(language_name))
+            .or_else(|| default_config.get_language_info(language_name))
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!(
+                        "No config contains definitions for language: {:?}",
+                        language_name
+                    ),
+                )
+            })?;
         match language_info {
             Err(e) => {
                 return Err(std::io::Error::new(
@@ -337,7 +160,6 @@ fn main() -> std::io::Result<std::process::ExitCode> {
                     let mut cursor = tree_sitter::QueryCursor::new();
                     //let mut context_cursor = tree_sitter::QueryCursor::new();
                     //context_cursor.set_max_start_depth(0);
-                    // TODO merge tree with ripgrep results more efficiently
                     for node_query in language_info.match_patterns {
                         let name_idx = node_query.capture_index_for_name("name").unwrap();
                         let def_idx = node_query.capture_index_for_name("def").unwrap();

@@ -1,0 +1,133 @@
+{
+  "RUST": {
+    "match_patterns": [
+      [
+        "[",
+        "  (function_item name: (_) @name)",
+        "  (function_signature_item name: (_) @name)",
+        "  (let_declaration pattern: [",
+        "    (identifier) @name",
+        "  ])",
+        "  (const_item name: (_) @name)",
+        "  (enum_item name: (_) @name)",
+        "  (impl_item type: (_) @name)",
+        "  (impl_item trait: (_) @name)",
+        "  (impl_item trait: (generic_type type: (_) @name))",
+        "  (impl_item trait: (generic_type type: (scoped_identifier name: (_) @name)))",
+        "  (impl_item trait: (generic_type type: (scoped_type_identifier name: (_) @name)))",
+        "  (impl_item trait: (scoped_type_identifier name: (_) @name))",
+        "  (macro_definition name: (_) @name)",
+        "  (mod_item name: (_) @name)",
+        "  (static_item name: (_) @name)",
+        "  (struct_item name: (_) @name)",
+        "  (trait_item name: (_) @name)",
+        "  (type_item name: (_) @name)",
+        "  (union_item name: (_) @name)",
+        "] @def"
+      ]
+    ],
+    "sibling_patterns": [
+      "line_comment",
+      "block_comment",
+      "attribute_item"
+    ],
+    "parent_patterns": [
+      "function_item",
+      "impl_item"
+    ],
+    "parent_exclusions": [
+      "body"
+    ]
+  },
+  "PYTHON": {
+    "match_patterns": [
+      [
+        "[",
+        "  (class_definition name: (_) @name) @def",
+        "  (function_definition name: (_) @name) @def",
+        "  (assignment left: (_) @name) @def",
+        "  (parameters (identifier) @name @def)",
+        "  (lambda_parameters (identifier) @name @def)",
+        "  (typed_parameter . (identifier) @name) @def",
+        "  (default_parameter name: (_) @name) @def",
+        "  (typed_default_parameter name: (_) @name) @def",
+        "]"
+      ]
+    ],
+    "sibling_patterns": [
+      "decorator",
+      "comment"
+    ],
+    "parent_patterns": [
+      "class_definition",
+      "function_definition"
+    ],
+    "parent_exclusions": [
+      "body"
+    ]
+  },
+  "TS": {
+    "match_patterns": [
+      [
+        "[",
+        "  (function_signature name: (_) @name)",
+        "  (function_declaration name: (_) @name)",
+        "  (method_signature name: (_) @name)",
+        "  (method_definition name: (_) @name)",
+        "  (abstract_method_signature name: (_) @name)",
+        "  (abstract_class_declaration name: (_) @name)",
+        "  (module name: (_) @name)",
+        "  (variable_declarator name: (_) @name)",
+        "  (class_declaration name: (_) @name)",
+        "  (type_alias_declaration name: (_) @name)",
+        "  (interface_declaration name: (_) @name)",
+        "  (import_statement (import_clause (named_imports (import_specifier alias: (_) @name))))",
+        "  (export_statement (export_clause (export_specifier alias: (_) @name)))",
+        "] @def"
+      ]
+    ],
+    "sibling_patterns": [
+      "comment"
+    ],
+    "parent_patterns": [
+      "function_declaration",
+      "method_definition",
+      "class_declaration"
+    ],
+    "parent_exclusions": [
+      "body"
+    ]
+  },
+  "TSX": {
+    "match_patterns": [
+      [
+        "[",
+        "  (function_signature name: (_) @name)",
+        "  (function_declaration name: (_) @name)",
+        "  (method_signature name: (_) @name)",
+        "  (method_definition name: (_) @name)",
+        "  (abstract_method_signature name: (_) @name)",
+        "  (abstract_class_declaration name: (_) @name)",
+        "  (module name: (_) @name)",
+        "  (variable_declarator name: (_) @name)",
+        "  (class_declaration name: (_) @name)",
+        "  (type_alias_declaration name: (_) @name)",
+        "  (interface_declaration name: (_) @name)",
+        "  (import_statement (import_clause (named_imports (import_specifier alias: (_) @name))))",
+        "  (export_statement (export_clause (export_specifier alias: (_) @name)))",
+        "] @def"
+      ]
+    ],
+    "sibling_patterns": [
+      "comment"
+    ],
+    "parent_patterns": [
+      "function_declaration",
+      "method_definition",
+      "class_declaration"
+    ],
+    "parent_exclusions": [
+      "body"
+    ]
+  }
+}

@@ -10,8 +10,13 @@ cc="*"
 [dependencies]
 clap = { version = "4.5.4", features = ["derive", "unicode", "wrap_help"] }
 console = "0.15"
+directories = "5.0.1"
+env_logger = "0.11.3"
+log = "0.4.21"
 os_str_bytes = "7.0"
 regex = "1.10"  # match ripgrep's default engine since we shell out to ripgrep
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 tree-sitter = "0.20"
 tree-sitter-c = "0.20"
 tree-sitter-cpp = "0.20"

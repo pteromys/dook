@@ -1,7 +1,7 @@
 extern crate console;
 
 pub struct MaybePager {
-    pager: std::option::Option<std::process::Child>,
+    pager: Option<std::process::Child>,
 }
 
 impl MaybePager {
@@ -50,7 +50,7 @@ impl MaybePager {
         }
     }
 
-    fn pipe(&mut self) -> std::option::Option<&mut std::process::ChildStdin> {
+    fn pipe(&mut self) -> Option<&mut std::process::ChildStdin> {
         match &mut self.pager {
             Some(child) => child.stdin.as_mut(),
             None => None,
