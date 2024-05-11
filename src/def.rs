@@ -427,6 +427,10 @@ fn main() -> std::io::Result<std::process::ExitCode> {
             Some((_rows, cols)) => cmd.arg(format!("--terminal-width={}", cols)),
             None => cmd,
         };
+        let cmd = match cli.plain {
+            0 => cmd,
+            _ => cmd.arg("--plain"),
+        };
         let cmd = cmd
             .args(
                 ranges
