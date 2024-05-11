@@ -167,7 +167,7 @@ fn get_language_info(language_name: LanguageName) -> Result<LanguageInfo, tree_s
                 //"([function_item function_signature_item attribute_item inner_attribute_item let_declaration const_item enum_item impl_item macro_definition mod_item static_item struct_item trait_item type_item union_item]
                 //    name: (_) @name) @def",
             ],
-            ["line_comment", "block_comment"],
+            ["line_comment", "block_comment", "attribute_item"],
             ["function_item", "impl_item"],
             ["body"],
         ),
@@ -192,20 +192,30 @@ fn get_language_info(language_name: LanguageName) -> Result<LanguageInfo, tree_s
             [
                 "[
                     (function_signature name: (_) @name)
+                    (function_declaration name: (_) @name)
                     (method_signature name: (_) @name)
+                    (method_definition name: (_) @name)
                     (abstract_method_signature name: (_) @name)
                     (abstract_class_declaration name: (_) @name)
                     (module name: (_) @name)
+                    (variable_declarator name: (_) @name)
+                    (class_declaration name: (_) @name)
                     (type_alias_declaration name: (_) @name)
                     (interface_declaration name: (_) @name)
+                    (import_statement (import_clause (named_imports (import_specifier alias: (_) @name))))
+                    (export_statement (export_clause (export_specifier alias: (_) @name)))
                 ] @def",
                 // TODO tree_sitter 0.22
                 //"([function_signature method_signature abstract_method_signature abstract_class_declaration module interface_declaration]
                 //    name: (_) @name) @def",
             ],
             ["comment"],
-            [],
-            [],
+            [
+                "function_declaration",
+                "method_definition",
+                "class_declaration",
+            ],
+            ["body"],
         ),
         LanguageName::TSX => LanguageInfo::new(
             tree_sitter_typescript::language_tsx(),
@@ -222,6 +232,8 @@ fn get_language_info(language_name: LanguageName) -> Result<LanguageInfo, tree_s
                     (class_declaration name: (_) @name)
                     (type_alias_declaration name: (_) @name)
                     (interface_declaration name: (_) @name)
+                    (import_statement (import_clause (named_imports (import_specifier alias: (_) @name))))
+                    (export_statement (export_clause (export_specifier alias: (_) @name)))
                 ] @def",
                 // TODO tree_sitter 0.22
                 //"([function_signature method_signature abstract_method_signature abstract_class_declaration module interface_declaration]
