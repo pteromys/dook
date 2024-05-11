@@ -10,6 +10,8 @@ extern crate os_str_bytes;
 mod dumptree;
 mod paging;
 
+use std::iter::IntoIterator;
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum)]
 enum EnablementLevel {
     Auto,
@@ -44,7 +46,7 @@ struct Cli {
     dump: bool,
 }
 
-#[derive(Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 enum LanguageName {
     RUST,
     PYTHON,
@@ -78,107 +80,57 @@ impl LanguageInfo {
             language: tree_sitter::Language,
             sources: II,
         ) -> Result<std::vec::Vec<tree_sitter::Query>, tree_sitter::QueryError> {
-            let mut last_error: std::option::Option<tree_sitter::QueryError> = None;
-            let result = sources
+            sources
                 .into_iter()
-                .map_while(
-                    |source| match tree_sitter::Query::new(language, source.as_ref()) {
-                        Ok(q) => Some(q),
-                        Err(e) => {
-                            last_error = Some(e);
-                            None
-                        }
-                    },
-                )
-                .collect();
-            match last_error {
-                Some(e) => Err(e),
-                None => Ok(result),
-            }
+                .map(|source| tree_sitter::Query::new(language, source.as_ref()))
+                .collect()
         }
         fn resolve_node_types<Item: AsRef<str>, II: IntoIterator<Item = Item>>(
             language: tree_sitter::Language,
             node_type_names: II,
         ) -> Result<std::vec::Vec<u16>, tree_sitter::QueryError> {
-            let mut last_unresolved: std::option::Option<String> = None;
-            let result = node_type_names
+            node_type_names
                 .into_iter()
-                .map_while(|node_type_name| {
+                .map(|node_type_name| {
                     match language.id_for_node_kind(node_type_name.as_ref(), true) {
-                        0 => {
-                            last_unresolved = Some(String::from(node_type_name.as_ref()));
-                            None
-                        }
-                        n => Some(n),
+                        0 => Err(tree_sitter::QueryError {
+                            row: 0,
+                            column: 0,
+                            offset: 0,
+                            message: format!("unknown node type: {:?}", node_type_name.as_ref()),
+                            kind: tree_sitter::QueryErrorKind::NodeType,
+                        }),
+                        n => Ok(n),
                     }
                 })
-                .collect();
-            match last_unresolved {
-                Some(e) => Err(tree_sitter::QueryError {
-                    row: 0,
-                    column: 0,
-                    offset: 0,
-                    message: format!("unknown node type: {:?}", e),
-                    kind: tree_sitter::QueryErrorKind::NodeType,
-                }),
-                None => Ok(result),
-            }
+                .collect()
         }
         fn resolve_field_names<Item: AsRef<str>, II: IntoIterator<Item = Item>>(
             language: tree_sitter::Language,
             field_names: II,
         ) -> Result<std::vec::Vec<u16>, tree_sitter::QueryError> {
-            let mut last_unresolved: std::option::Option<String> = None;
-            let result = field_names
+            field_names
                 .into_iter()
-                .map_while(
-                    |field_name| match language.field_id_for_name(field_name.as_ref()) {
-                        None => {
-                            last_unresolved = Some(String::from(field_name.as_ref()));
-                            None
-                        }
-                        Some(n) => Some(n),
-                    },
-                )
-                .collect();
-            match last_unresolved {
-                Some(e) => Err(tree_sitter::QueryError {
-                    row: 0,
-                    column: 0,
-                    offset: 0,
-                    message: format!("unknown field name: {:?}", e),
-                    kind: tree_sitter::QueryErrorKind::Field,
-                }),
-                None => Ok(result),
-            }
+                .map(|field_name| {
+                    language
+                        .field_id_for_name(field_name.as_ref())
+                        .ok_or_else(|| tree_sitter::QueryError {
+                            row: 0,
+                            column: 0,
+                            offset: 0,
+                            message: format!("unknown field name: {:?}", field_name.as_ref()),
+                            kind: tree_sitter::QueryErrorKind::Field,
+                        })
+                })
+                .collect()
         }
-        let match_patterns = compile_queries(language, match_patterns);
-        let sibling_patterns = resolve_node_types(language, sibling_patterns);
-        let parent_patterns = resolve_node_types(language, parent_patterns);
-        let parent_exclusions = resolve_field_names(language, parent_exclusions);
-        match (
-            match_patterns,
-            sibling_patterns,
-            parent_patterns,
-            parent_exclusions,
-        ) {
-            (
-                Ok(match_patterns),
-                Ok(sibling_patterns),
-                Ok(parent_patterns),
-                Ok(parent_exclusions),
-            ) => Ok(Self {
-                language,
-                match_patterns,
-                sibling_patterns,
-                parent_patterns,
-                parent_exclusions,
-            }),
-            (Err(e), _, _, _) => Err(e),
-            (_, Err(e), _, _) => Err(e),
-            (_, _, Err(e), _) => Err(e),
-            (_, _, _, Err(e)) => Err(e),
-        }
+        Ok(Self {
+            language,
+            match_patterns: compile_queries(language, match_patterns)?,
+            sibling_patterns: resolve_node_types(language, sibling_patterns)?,
+            parent_patterns: resolve_node_types(language, parent_patterns)?,
+            parent_exclusions: resolve_field_names(language, parent_exclusions)?,
+        })
     }
 }
 
@@ -317,25 +269,22 @@ fn main() -> std::io::Result<std::process::ExitCode> {
         ));
     }
     // TODO is this even actually the right way to convert stdout to OsStr?
-    let mut last_undecoded: std::option::Option<std::vec::Vec<u8>> = None;
-    let filenames = rg_output
+    let filenames: std::io::Result<std::vec::Vec<std::ffi::OsString>> = rg_output
         .stdout
         .split(|x| *x == 0)
-        .filter_map(|x| match std::ffi::OsStr::from_io_bytes(x) {
-            None => {
-                last_undecoded = Some(std::vec::Vec::from(x));
-                None
-            }
-            Some(y) => Some(y.to_os_string()),
+        .map(|x| match std::ffi::OsStr::from_io_bytes(x) {
+            None => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("{:?}", std::vec::Vec::from(x)),
+            )),
+            Some(y) => Ok(y.to_os_string()),
         })
-        .filter(|f| !f.is_empty())
-        .collect::<std::vec::Vec<std::ffi::OsString>>();
-    if let Some(undecoded_bytes) = last_undecoded {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!("{:?}", undecoded_bytes),
-        ));
-    }
+        .filter(|f| match f {
+            Ok(f) => !f.is_empty(),
+            _ => true,
+        })
+        .collect();
+    let filenames = filenames?;
 
     // infer syntax, then search with tree_sitter
     // TODO 0: add more languages
