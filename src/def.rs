@@ -120,15 +120,37 @@ fn main() -> std::io::Result<std::process::ExitCode> {
         // TODO group by language and do a second pass with language-specific regexes?
         let language_name = if path.ends_with(".rs") {
             config::LanguageName::RUST
-        } else if path.ends_with(".py") {
+        } else if path.ends_with(".py") || path.ends_with(".pyx") {
             config::LanguageName::PYTHON
+        } else if path.ends_with(".js") {
+            config::LanguageName::JS
         } else if path.ends_with(".ts") {
             config::LanguageName::TS
         } else if path.ends_with(".tsx") {
             config::LanguageName::TSX
+        } else if path.ends_with(".c") || path.ends_with(".h") {
+            config::LanguageName::C
+        } else if path.ends_with(".cpp")
+            || path.ends_with(".hpp")
+            || path.ends_with(".cxx")
+            || path.ends_with(".hxx")
+            || path.ends_with(".C")
+            || path.ends_with(".H")
+        {
+            config::LanguageName::CPLUSPLUS
+        } else if path.ends_with(".go") {
+            config::LanguageName::GO
         } else {
             continue;
         };
+        if cli.dump {
+            let mut parser = tree_sitter::Parser::new();
+            parser.set_language(language_name.get_language()).unwrap();
+            let source_code = std::fs::read(&path)?;
+            let tree = parser.parse(&source_code, None).unwrap();
+            dumptree::dump_tree(&tree, source_code.as_slice());
+            continue;
+        }
         let language_info = custom_config
             .as_ref()
             .and_then(|c| c.get_language_info(language_name))
@@ -151,84 +173,77 @@ fn main() -> std::io::Result<std::process::ExitCode> {
             }
             Ok(language_info) => {
                 let mut parser = tree_sitter::Parser::new();
-                parser.set_language(language_info.language).expect("Darn");
+                parser.set_language(language_info.language).unwrap();
                 let source_code = std::fs::read(&path)?;
                 let tree = parser.parse(&source_code, None).unwrap();
-                if cli.dump {
-                    dumptree::dump_tree(&tree, source_code.as_slice());
-                } else {
-                    let mut cursor = tree_sitter::QueryCursor::new();
-                    //let mut context_cursor = tree_sitter::QueryCursor::new();
-                    //context_cursor.set_max_start_depth(0);
-                    for node_query in language_info.match_patterns {
-                        let name_idx = node_query.capture_index_for_name("name").unwrap();
-                        let def_idx = node_query.capture_index_for_name("def").unwrap();
-                        for query_match in cursor
-                            .matches(&node_query, tree.root_node(), source_code.as_slice())
-                            .filter(|query_match| {
-                                query_match.captures.iter().any(|capture| {
-                                    capture.index == name_idx
-                                        && local_pattern.is_match(
-                                            std::str::from_utf8(
-                                                &source_code[capture.node.byte_range()],
-                                            )
-                                            .unwrap(),
+                let mut cursor = tree_sitter::QueryCursor::new();
+                //let mut context_cursor = tree_sitter::QueryCursor::new();
+                //context_cursor.set_max_start_depth(0);
+                for node_query in language_info.match_patterns {
+                    let name_idx = node_query.capture_index_for_name("name").unwrap();
+                    let def_idx = node_query.capture_index_for_name("def").unwrap();
+                    for query_match in cursor
+                        .matches(&node_query, tree.root_node(), source_code.as_slice())
+                        .filter(|query_match| {
+                            query_match.captures.iter().any(|capture| {
+                                capture.index == name_idx
+                                    && local_pattern.is_match(
+                                        std::str::from_utf8(
+                                            &source_code[capture.node.byte_range()],
                                         )
-                                })
+                                        .unwrap(),
+                                    )
                             })
+                        })
+                    {
+                        for capture in query_match
+                            .captures
+                            .iter()
+                            .filter(|capture| capture.index == def_idx)
                         {
-                            for capture in query_match
-                                .captures
-                                .iter()
-                                .filter(|capture| capture.index == def_idx)
-                            {
-                                let target_ranges = print_ranges
-                                    .entry(path.clone())
-                                    .or_insert_with(std::vec::Vec::new);
-                                target_ranges.push(
-                                    capture.node.range().start_point.row
-                                        ..capture.node.range().end_point.row,
-                                );
-                                let mut node = capture.node;
-                                loop {
-                                    if let Some(sibling) = node.prev_sibling() {
-                                        if language_info
-                                            .sibling_patterns
-                                            .contains(&sibling.kind_id())
-                                        {
-                                            target_ranges.push(
-                                                sibling.range().start_point.row
-                                                    ..sibling.range().end_point.row,
-                                            );
-                                            node = sibling;
-                                            continue;
-                                        }
-                                    }
-                                    if let Some(parent) = node.parent() {
-                                        // TODO interval arithmetic
-                                        if language_info.parent_patterns.contains(&parent.kind_id())
-                                        {
-                                            let context_start = parent.range().start_point.row;
-                                            let context_end = context_start.max(
-                                                language_info
-                                                    .parent_exclusions
-                                                    .iter()
-                                                    .filter_map(|field_id| {
-                                                        parent.child_by_field_id(*field_id)
-                                                    })
-                                                    .map(|c| {
-                                                        c.range().start_point.row.saturating_sub(1)
-                                                    })
-                                                    .min()
-                                                    .unwrap_or(parent.range().end_point.row),
-                                            );
-                                            target_ranges.push(context_start..context_end);
-                                        }
-                                        node = parent;
-                                    } else {
-                                        break;
-                                    }
+                            let target_ranges = print_ranges
+                                .entry(path.clone())
+                                .or_insert_with(std::vec::Vec::new);
+                            target_ranges.push(
+                                capture.node.range().start_point.row
+                                    ..capture.node.range().end_point.row,
+                            );
+                            let mut node = capture.node;
+                            // include preceding neighbors as context while they remain relevant
+                            // such as comments, python decorators, rust attributes, and c++ template arguments
+                            while let Some(sibling) = node.prev_sibling() {
+                                if language_info.sibling_patterns.contains(&sibling.kind_id()) {
+                                    target_ranges.push(
+                                        sibling.range().start_point.row
+                                            ..sibling.range().end_point.row,
+                                    );
+                                    node = sibling;
+                                } else {
+                                    break;
                                 }
+                            }
+                            // then include a header line from each relevant ancestor
+                            while let Some(parent) = node.parent() {
+                                // TODO interval arithmetic
+                                if language_info.parent_patterns.contains(&parent.kind_id()) {
+                                    let context_start = parent.range().start_point.row;
+                                    let context_end = context_start.max(
+                                        language_info
+                                            .parent_exclusions
+                                            .iter()
+                                            .filter_map(|field_id| {
+                                                parent.child_by_field_id(*field_id)
+                                            })
+                                            .map(|c| {
+                                                c.range().start_point.row.saturating_sub(1)
+                                                // TODO only subtract if exclusion is start of line?
+                                            })
+                                            .min()
+                                            .unwrap_or(parent.range().end_point.row),
+                                    );
+                                    target_ranges.push(context_start..context_end);
+                                }
+                                node = parent;
                             }
                         }
                     }

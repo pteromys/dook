@@ -45,6 +45,8 @@
         "[",
         "  (class_definition name: (_) @name) @def",
         "  (function_definition name: (_) @name) @def",
+        "  (decorated_definition (class_definition name: (_) @name)) @def",
+        "  (decorated_definition (function_definition name: (_) @name)) @def",
         "  (assignment left: (_) @name) @def",
         "  (parameters (identifier) @name @def)",
         "  (lambda_parameters (identifier) @name @def)",
@@ -61,6 +63,34 @@
     "parent_patterns": [
       "class_definition",
       "function_definition"
+    ],
+    "parent_exclusions": [
+      "body"
+    ]
+  },
+  "JS": {
+    "match_patterns": [
+      [
+        "[",
+        "  (variable_declarator name: (_) @name)",
+        "  (function_declaration name: (_) @name)",
+        "  (function_expression name: (_) @name)",
+        "  (method_definition name: (_) @name)",
+        "  (formal_parameters (identifier) @name)",
+        "  (class_declaration name: (_) @name)",
+        "  (assignment_expression left: (_) @name)",
+        "  (assignment_expression left: (member_expression property: (_) @name))",
+        "] @def"
+      ]
+    ],
+    "sibling_patterns": [
+      "comment"
+    ],
+    "parent_patterns": [
+      "function_declaration",
+      "function_expression",
+      "method_definition",
+      "class_declaration"
     ],
     "parent_exclusions": [
       "body"
@@ -128,6 +158,114 @@
     ],
     "parent_exclusions": [
       "body"
+    ]
+  },
+  "GO": {
+    "match_patterns": [
+      [
+        "[",
+        "  (type_spec name: (_) @name)",
+        "  (function_declaration name: (_) @name)",
+        "  (method_declaration name: (_) @name)",
+        "  (field_declaration name: (_) @name)",
+        "  (parameter_declaration name: (_) @name)",
+        "  (assignment_statement left: (_) @name)",
+        "] @def"
+      ]
+    ],
+    "sibling_patterns": [
+      "comment"
+    ],
+    "parent_patterns": [
+      "type_spec",
+      "function_declaration",
+      "method_declaration"
+    ],
+    "parent_exclusions": [
+      "body",
+      "type"
+    ]
+  },
+  "C": {
+    "match_patterns": [
+      [
+        "[",
+        "  (preproc_def name: (_) @name)",
+        "  (preproc_function_def name: (_) @name)",
+        "  (struct_specifier name: (_) @name body: (_))",
+        "  (type_definition type: (struct_specifier name: (_) @name body: (_)))",
+        "  (type_definition \"typedef\" type: (_) (type_identifier) @name)",
+        "  (type_definition \"typedef\" type: (_) (pointer_declarator) @name)",
+        "  (type_definition \"typedef\" type: (_) (pointer_declarator declarator: (_) @name))",
+        "  (field_declaration declarator: (_) @name)",
+        "  (field_declaration declarator: (pointer_declarator declarator: (_) @name))",
+        "  (field_declaration declarator: (pointer_declarator declarator: (pointer_declarator declarator: (_) @name)))",
+        "  (field_declaration declarator: (pointer_declarator declarator: (pointer_declarator declarator: (pointer_declarator declarator: (_) @name))))",
+        "  (field_declaration declarator: (pointer_declarator declarator: (pointer_declarator declarator: (pointer_declarator declarator: (pointer_declarator declarator: (_) @name)))))",
+        "  (function_declarator declarator: (_) @name)",
+        "  (function_definition (function_declarator declarator: (_) @name))",
+        "  (function_definition (pointer_declarator declarator: (function_declarator declarator: (_) @name)))",
+        "  (function_definition (pointer_declarator declarator: (pointer_declarator declarator: (function_declarator declarator: (_) @name))))",
+        "  (function_definition (pointer_declarator declarator: (pointer_declarator declarator: (pointer_declarator declarator: (function_declarator declarator: (_) @name)))))",
+        "  (_ declarator: (identifier) @name)",
+        "  (_ declarator: (field_identifier) @name)",
+        "  (_ declarator: (type_identifier) @name)",
+        "] @def"
+      ]
+    ],
+    "sibling_patterns": [
+      "comment"
+    ],
+    "parent_patterns": [
+      "type_definition",
+      "function_declarator",
+      "struct_specifier"
+    ],
+    "parent_exclusions": [
+      "body",
+      "type"
+    ]
+  },
+  "CPLUSPLUS": {
+    "match_patterns": [
+      [
+        "[",
+        "  (preproc_def name: (_) @name)",
+        "  (function_declarator declarator: (_) @name)",
+        "  (function_definition declarator: (_ declarator: (_) @name))",
+        "  (function_definition declarator: (_ declarator: (qualified_identifier (\"::\" (_) @name))))",
+        "  (function_definition declarator: (_ declarator: (qualified_identifier (qualified_identifier (\"::\" (_) @name)))))",
+        "  (function_definition declarator: (_ declarator: (template_function name: (_) @name)))",
+        "  (struct_specifier name: (_) @name)",
+        "  (_ declarator: (identifier) @name)",
+        "  (_ declarator: (field_identifier) @name)",
+        "  (_ declarator: (type_identifier) @name)",
+        "  (_ declarator: (template_function) @name)",
+        "  (_ declarator: (template_function name: (_) @name))",
+        "  (namespace_definition name: (_) @name)",
+        "  (type_parameter_declaration (type_identifier) @name)",
+        "  (class_specifier (type_identifier) @name)",
+        "  (field_initializer (field_identifier) @name)",
+        "  (assignment_expression left: (_) @name)",
+        "  (assignment_expression left: (field_expression field: (_) @name))",
+        "] @def"
+      ]
+    ],
+    "sibling_patterns": [
+      "comment",
+      "template_parameter_list"
+    ],
+    "parent_patterns": [
+      "namespace_definition",
+      "type_definition",
+      "function_declarator",
+      "function_definition",
+      "struct_specifier",
+      "class_specifier"
+    ],
+    "parent_exclusions": [
+      "body",
+      "type"
     ]
   }
 }

@@ -10,8 +10,27 @@ const DEFAULT_CONFIG: &str = include_str!("def.json");
 pub enum LanguageName {
     RUST,
     PYTHON,
+    JS,
     TS,
     TSX,
+    C,
+    CPLUSPLUS,
+    GO,
+}
+
+impl LanguageName {
+    pub fn get_language(self) -> tree_sitter::Language {
+        match self {
+            LanguageName::RUST => tree_sitter_rust::language(),
+            LanguageName::PYTHON => tree_sitter_python::language(),
+            LanguageName::JS => tree_sitter_javascript::language(),
+            LanguageName::TS => tree_sitter_typescript::language_typescript(),
+            LanguageName::TSX => tree_sitter_typescript::language_tsx(),
+            LanguageName::C => tree_sitter_c::language(),
+            LanguageName::CPLUSPLUS => tree_sitter_cpp::language(),
+            LanguageName::GO => tree_sitter_go::language(),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, serde::Deserialize)]
@@ -84,12 +103,7 @@ impl Config {
     ) -> Option<Result<LanguageInfo, tree_sitter::QueryError>> {
         let Self(config_map) = self;
         let language_config = config_map.get(&language_name)?;
-        let language = match language_name {
-            LanguageName::RUST => tree_sitter_rust::language(),
-            LanguageName::PYTHON => tree_sitter_python::language(),
-            LanguageName::TSX => tree_sitter_typescript::language_tsx(),
-            LanguageName::TS => tree_sitter_typescript::language_typescript(),
-        };
+        let language = language_name.get_language();
         let match_patterns: std::vec::Vec<String> = language_config
             .match_patterns
             .iter()
