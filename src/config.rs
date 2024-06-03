@@ -6,7 +6,7 @@
 
 const DEFAULT_CONFIG: &str = include_str!("def.json");
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, serde::Deserialize, strum::EnumIter)]
 pub enum LanguageName {
     RUST,
     PYTHON,
@@ -199,5 +199,19 @@ impl LanguageInfo {
             parent_patterns: resolve_node_types(language, parent_patterns)?,
             parent_exclusions: resolve_field_names(language, parent_exclusions)?,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_patterns_are_loadable() {
+        use strum::IntoEnumIterator;
+        let default_config = Config::load_default();
+        for language_name in LanguageName::iter() {
+            default_config.get_language_info(language_name);
+        }
     }
 }
