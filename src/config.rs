@@ -7,28 +7,29 @@
 const DEFAULT_CONFIG: &str = include_str!("def.json");
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, serde::Deserialize, strum::EnumIter)]
+#[serde(rename_all = "lowercase")]
 pub enum LanguageName {
-    RUST,
-    PYTHON,
-    JS,
-    TS,
-    TSX,
+    Rust,
+    Python,
+    Js,
+    Ts,
+    Tsx,
     C,
-    CPLUSPLUS,
-    GO,
+    CPlusPlus,
+    Go,
 }
 
 impl LanguageName {
     pub fn get_language(self) -> tree_sitter::Language {
         match self {
-            LanguageName::RUST => tree_sitter_rust::language(),
-            LanguageName::PYTHON => tree_sitter_python::language(),
-            LanguageName::JS => tree_sitter_javascript::language(),
-            LanguageName::TS => tree_sitter_typescript::language_typescript(),
-            LanguageName::TSX => tree_sitter_typescript::language_tsx(),
+            LanguageName::Rust => tree_sitter_rust::language(),
+            LanguageName::Python => tree_sitter_python::language(),
+            LanguageName::Js => tree_sitter_javascript::language(),
+            LanguageName::Ts => tree_sitter_typescript::language_typescript(),
+            LanguageName::Tsx => tree_sitter_typescript::language_tsx(),
             LanguageName::C => tree_sitter_c::language(),
-            LanguageName::CPLUSPLUS => tree_sitter_cpp::language(),
-            LanguageName::GO => tree_sitter_go::language(),
+            LanguageName::CPlusPlus => tree_sitter_cpp::language(),
+            LanguageName::Go => tree_sitter_go::language(),
         }
     }
 }
@@ -36,15 +37,15 @@ impl LanguageName {
 #[derive(Debug, PartialEq, serde::Deserialize)]
 #[serde(untagged)]
 enum MultiLineString {
-    ONE(String),
-    MANY(std::vec::Vec<String>),
+    One(String),
+    Many(std::vec::Vec<String>),
 }
 
 impl From<&MultiLineString> for String {
     fn from(mls: &MultiLineString) -> Self {
         match mls {
-            MultiLineString::ONE(s) => s.clone(),
-            MultiLineString::MANY(v) => v.join("\n"),
+            MultiLineString::One(s) => s.clone(),
+            MultiLineString::Many(v) => v.join("\n"),
         }
     }
 }
@@ -87,14 +88,14 @@ impl Config {
                 }
             },
         };
-        match serde_json::from_slice(&file_contents) {
+        match serde_json::from_slice(&file_contents.to_ascii_lowercase()) {
             Ok(c) => Ok(Some(c)),
             Err(e) => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e)),
         }
     }
 
     pub fn load_default() -> Self {
-        serde_json::from_slice(DEFAULT_CONFIG.as_bytes()).unwrap()
+        serde_json::from_slice(DEFAULT_CONFIG.to_ascii_lowercase().as_bytes()).unwrap()
     }
 
     pub fn get_language_info(

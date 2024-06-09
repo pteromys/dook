@@ -1,5 +1,3 @@
-extern crate console;
-
 pub struct MaybePager {
     pager: Option<std::process::Child>,
 }

@@ -1,10 +1,8 @@
-extern crate tree_sitter;
-
 /// dump the structure of a `tree_sitter::Tree` to standard output.
 pub fn dump_tree<'tree, T: tree_sitter::TextProvider<'tree>>(
     tree: &tree_sitter::Tree,
     mut text_provider: T,
-) -> () {
+) {
     let mut depth: usize = 0;
     let mut sibling_idx = std::vec::Vec::<usize>::new();
     let mut cursor = tree.walk();
@@ -13,9 +11,7 @@ pub fn dump_tree<'tree, T: tree_sitter::TextProvider<'tree>>(
         let node = cursor.node();
         let field_name = match node.parent() {
             Some(parent) => parent
-                .field_name_for_child(
-                    sibling_idx.last().unwrap().clone() as u32, /* mod 2**32 */
-                )
+                .field_name_for_child(*sibling_idx.last().unwrap() as u32 /* mod 2**32 */)
                 .unwrap_or(""),
             None => "",
         };

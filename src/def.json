@@ -1,5 +1,5 @@
 {
-  "RUST": {
+  "rust": {
     "match_patterns": [
       [
         "[",
@@ -39,7 +39,7 @@
       "body"
     ]
   },
-  "PYTHON": {
+  "python": {
     "match_patterns": [
       [
         "[",
@@ -69,7 +69,7 @@
       "body"
     ]
   },
-  "JS": {
+  "js": {
     "match_patterns": [
       [
         "[",
@@ -97,7 +97,7 @@
       "body"
     ]
   },
-  "TS": {
+  "ts": {
     "match_patterns": [
       [
         "[",
@@ -149,7 +149,7 @@
       "type"
     ]
   },
-  "TSX": {
+  "tsx": {
     "match_patterns": [
       [
         "[",
@@ -203,7 +203,7 @@
       "type"
     ]
   },
-  "GO": {
+  "go": {
     "match_patterns": [
       [
         "[",
@@ -229,7 +229,7 @@
       "type"
     ]
   },
-  "C": {
+  "c": {
     "match_patterns": [
       [
         "[",
@@ -269,7 +269,7 @@
       "type"
     ]
   },
-  "CPLUSPLUS": {
+  "cplusplus": {
     "match_patterns": [
       [
         "[",

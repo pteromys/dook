@@ -5,27 +5,16 @@
 //     https://dandavison.github.io/delta/grep.html
 //     https://docs.github.com/en/repositories/working-with-files/using-files/navigating-code-on-github#precise-and-search-based-navigation
 
-extern crate clap;
-extern crate directories;
-extern crate os_str_bytes;
-
 mod config;
 mod dumptree;
 mod paging;
 
-use std::iter::IntoIterator;
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum)]
 enum EnablementLevel {
+    #[default]
     Auto,
     Never,
     Always,
-}
-
-impl Default for EnablementLevel {
-    fn default() -> Self {
-        EnablementLevel::Auto
-    }
 }
 
 #[derive(clap::Parser, Debug)]
@@ -119,15 +108,15 @@ fn main() -> std::io::Result<std::process::ExitCode> {
     for path in filenames {
         // TODO group by language and do a second pass with language-specific regexes?
         let language_name = if path.ends_with(".rs") {
-            config::LanguageName::RUST
+            config::LanguageName::Rust
         } else if path.ends_with(".py") || path.ends_with(".pyx") {
-            config::LanguageName::PYTHON
+            config::LanguageName::Python
         } else if path.ends_with(".js") {
-            config::LanguageName::JS
+            config::LanguageName::Js
         } else if path.ends_with(".ts") {
-            config::LanguageName::TS
+            config::LanguageName::Ts
         } else if path.ends_with(".tsx") {
-            config::LanguageName::TSX
+            config::LanguageName::Tsx
         } else if path.ends_with(".c") || path.ends_with(".h") {
             config::LanguageName::C
         } else if path.ends_with(".cpp")
@@ -137,9 +126,9 @@ fn main() -> std::io::Result<std::process::ExitCode> {
             || path.ends_with(".C")
             || path.ends_with(".H")
         {
-            config::LanguageName::CPLUSPLUS
+            config::LanguageName::CPlusPlus
         } else if path.ends_with(".go") {
-            config::LanguageName::GO
+            config::LanguageName::Go
         } else {
             continue;
         };
@@ -192,9 +181,7 @@ fn main() -> std::io::Result<std::process::ExitCode> {
                     .iter()
                     .filter(|capture| capture.index == def_idx)
                 {
-                    let target_ranges = print_ranges
-                        .entry(path.clone())
-                        .or_insert_with(std::vec::Vec::new);
+                    let target_ranges = print_ranges.entry(path.clone()).or_default();
                     target_ranges.push(
                         capture.node.range().start_point.row..capture.node.range().end_point.row,
                     );
@@ -268,7 +255,7 @@ fn main() -> std::io::Result<std::process::ExitCode> {
         let cmd = cmd
             .args(
                 ranges
-                    .into_iter()
+                    .iter()
                     .map(|x| format!("--line-range={}:{}", x.start + 1, x.end + 1)),
             )
             .arg(path);
