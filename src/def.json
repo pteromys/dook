@@ -47,8 +47,10 @@
         "  (function_definition name: (_) @name) @def",
         "  (decorated_definition (class_definition name: (_) @name)) @def",
         "  (decorated_definition (function_definition name: (_) @name)) @def",
-        "  (assignment left: (_) @name) @def",
-        "  (assignment left: (attribute attribute: (_) @name)) @def",
+        "  (expression_statement (assignment left: (_) @name)) @def",
+        "  (expression_statement (assignment left: (attribute attribute: (_) @name))) @def",
+        "  (expression_statement (assignment left: (subscript subscript: (string (string_content) @name)))) @def",
+        "  (dictionary (pair key: (string (string_content) @name)) @def)",
         "  (parameters (identifier) @name @def)",
         "  (lambda_parameters (identifier) @name @def)",
         "  (typed_parameter . (identifier) @name) @def",
@@ -63,10 +65,12 @@
     ],
     "parent_patterns": [
       "class_definition",
-      "function_definition"
+      "function_definition",
+      "assignment"
     ],
     "parent_exclusions": [
-      "body"
+      "body",
+      "right"
     ]
   },
   "js": {

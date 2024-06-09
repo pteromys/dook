@@ -53,9 +53,8 @@ Also attempts to find assignments, class definitions, etc—because why should y
 
 ## Possible future work
 
-- tests 😱
 - better language detection (e.g. llvm headers are C++ but most deviously end in lowercase .h)
-- more languages
+- more languages (and tests in more languages 😱)
 - recursive mode
 - show all calls to a function instead (ripgrep already gets mostly there so I care less)
 - end this project and make it instead a feature of ripgrep
