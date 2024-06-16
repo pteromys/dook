@@ -1,54 +1,5 @@
 use crate::config;
 
-#[derive(Default)]
-pub struct RangeUnion {
-    ends_by_start: std::collections::BTreeMap<usize, usize>,
-}
-
-impl RangeUnion {
-    pub fn extend(&mut self, ranges: impl AsRef<[std::ops::Range<usize>]>) {
-        for range in ranges.as_ref() {
-            self.add(range);
-        }
-    }
-
-    fn add(&mut self, range: &std::ops::Range<usize>) {
-        self.ends_by_start
-            .entry(range.start)
-            .and_modify(|e| *e = (*e).max(range.end))
-            .or_insert(range.end);
-    }
-
-    // TODO rewrite as iterator
-    // TODO fill in single-line gaps
-    pub fn as_ranges(&self) -> std::vec::Vec<std::ops::Range<usize>> {
-        let mut result: std::vec::Vec<std::ops::Range<usize>> = std::vec::Vec::new();
-        let mut earliest_open_start: Option<usize> = None;
-        let mut farthest_end: usize = 0;
-        for (start, end) in self.ends_by_start.iter() {
-            match earliest_open_start {
-                None => {
-                    earliest_open_start = Some(*start);
-                    farthest_end = *end;
-                }
-                Some(prev_start) => {
-                    if *start <= farthest_end {
-                        farthest_end = farthest_end.max(*end);
-                    } else {
-                        result.push(prev_start..farthest_end);
-                        earliest_open_start = Some(*start);
-                        farthest_end = *end;
-                    }
-                }
-            }
-        }
-        if let Some(prev_start) = earliest_open_start {
-            result.push(prev_start..farthest_end);
-        }
-        result
-    }
-}
-
 pub fn find_definition(
     source_code: &[u8],
     tree: &tree_sitter::Tree,
@@ -126,15 +77,16 @@ pub fn find_definition(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::range_union;
 
     const PYTHON_SOURCE: &[u8] = include_bytes!("../test_cases/python.py");
 
     fn union_ranges(
         ranges: impl AsRef<[std::ops::Range<usize>]>,
     ) -> std::vec::Vec<std::ops::Range<usize>> {
-        let mut union: RangeUnion = Default::default();
+        let mut union: range_union::RangeUnion = Default::default();
         union.extend(ranges);
-        union.as_ranges()
+        union.into_iter().collect()
     }
 
     #[test]

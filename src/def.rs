@@ -8,6 +8,7 @@
 mod config;
 mod dumptree;
 mod paging;
+mod range_union;
 mod searches;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum)]
@@ -102,7 +103,7 @@ fn main() -> std::io::Result<std::process::ExitCode> {
     // TODO 1: sniff syntax by content
     //     maybe use shebangs
     //     maybe https://github.com/sharkdp/bat/blob/master/src/syntax_mapping.rs
-    let mut print_ranges: std::collections::HashMap<std::ffi::OsString, searches::RangeUnion> =
+    let mut print_ranges: std::collections::HashMap<std::ffi::OsString, range_union::RangeUnion> =
         std::collections::HashMap::new();
     for path in filenames {
         // TODO group by language and do a second pass with language-specific regexes?
@@ -197,8 +198,7 @@ fn main() -> std::io::Result<std::process::ExitCode> {
         let cmd = cmd
             .args(
                 ranges
-                    .as_ranges()
-                    .iter()
+                    .iter_filling_gaps(1) // snip indicator - 8< - takes 1 line anyway
                     .map(|x| format!("--line-range={}:{}", x.start + 1, x.end)), // bat end is inclusive
             )
             .arg(path);
