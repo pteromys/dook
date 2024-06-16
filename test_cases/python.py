@@ -31,7 +31,11 @@ class one:
             },
             dummy=None,
             ) -> None:
-        yield
+        yield functools.some.module.hecks(self, nine, ten, dummy)
+
+
+def hecks(*yargs):
+    return yargs
 
 
 # this is a comment

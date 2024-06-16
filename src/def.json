@@ -59,6 +59,14 @@
         "]"
       ]
     ],
+    "recurse_patterns": [
+      [
+        "[",
+        "  (call function: (identifier) @name)",
+        "  (call function: (attribute attribute: (identifier) @name))",
+        "]"
+      ]
+    ],
     "sibling_patterns": [
       "decorator",
       "comment"

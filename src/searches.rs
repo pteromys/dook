@@ -1,13 +1,74 @@
-use crate::config;
+use crate::{config, range_union};
+
+pub struct ParsedFile {
+    pub language_name: config::LanguageName,
+    pub source_code: std::vec::Vec<u8>,
+    pub tree: tree_sitter::Tree,
+}
+
+impl ParsedFile {
+    pub fn from_filename(path: &std::ffi::OsString) -> Option<ParsedFile> {
+        // TODO 0: add more languages
+        // TODO 1: sniff syntax by content
+        //     maybe use shebangs
+        //     maybe https://github.com/sharkdp/bat/blob/master/src/syntax_mapping.rs
+        // TODO 2: group by language and do a second pass with language-specific regexes?
+        use os_str_bytes::OsStrBytesExt;
+        let language_name = if path.ends_with(".rs") {
+            config::LanguageName::Rust
+        } else if path.ends_with(".py") || path.ends_with(".pyx") {
+            config::LanguageName::Python
+        } else if path.ends_with(".js") {
+            config::LanguageName::Js
+        } else if path.ends_with(".ts") {
+            config::LanguageName::Ts
+        } else if path.ends_with(".tsx") {
+            config::LanguageName::Tsx
+        } else if path.ends_with(".c") || path.ends_with(".h") {
+            config::LanguageName::C
+        } else if path.ends_with(".cpp")
+            || path.ends_with(".hpp")
+            || path.ends_with(".cxx")
+            || path.ends_with(".hxx")
+            || path.ends_with(".C")
+            || path.ends_with(".H")
+        {
+            config::LanguageName::CPlusPlus
+        } else if path.ends_with(".go") {
+            config::LanguageName::Go
+        } else {
+            return None;
+        };
+        let source_code = std::fs::read(path).unwrap(); // TODO transmit error
+        Self::from_bytes(source_code, language_name)
+    }
+
+    pub fn from_bytes(
+        source_code: Vec<u8>,
+        language_name: config::LanguageName,
+    ) -> Option<ParsedFile> {
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(language_name.get_language()).unwrap();
+        let tree = parser.parse(&source_code, None).unwrap();
+        Some(ParsedFile {
+            language_name,
+            source_code,
+            tree,
+        })
+    }
+}
 
 pub fn find_definition(
     source_code: &[u8],
     tree: &tree_sitter::Tree,
     language_info: &config::LanguageInfo,
     pattern: &regex::Regex,
-) -> std::vec::Vec<std::ops::Range<usize>> {
-    let mut result: std::vec::Vec<std::ops::Range<usize>> = std::vec::Vec::new();
+    recurse: bool,
+) -> (range_union::RangeUnion, std::vec::Vec<String>) {
+    let mut result: range_union::RangeUnion = Default::default();
     let mut cursor = tree_sitter::QueryCursor::new();
+    let mut recurse_cursor = tree_sitter::QueryCursor::new();
+    let mut recurse_names: std::vec::Vec<String> = std::vec::Vec::new();
     //let mut context_cursor = tree_sitter::QueryCursor::new();
     //context_cursor.set_max_start_depth(0);
     for node_query in language_info.match_patterns.iter() {
@@ -29,11 +90,31 @@ pub fn find_definition(
                 .iter()
                 .filter(|capture| capture.index == def_idx)
             {
-                result.push(
-                    capture.node.range().start_point.row
-                        ..capture.node.range().end_point.row.saturating_add(1),
-                );
                 let mut node = capture.node;
+                result.push(
+                    node.range().start_point.row..node.range().end_point.row.saturating_add(1),
+                );
+                // find names to look up for recursion
+                if recurse {
+                    for recurse_query in language_info.recurse_patterns.iter() {
+                        let recurse_name_idx = node_query.capture_index_for_name("name").unwrap();
+                        for recurse_match in
+                            recurse_cursor.matches(recurse_query, node, source_code)
+                        {
+                            for recurse_capture in recurse_match
+                                .captures
+                                .iter()
+                                .filter(|recurse_capture| recurse_capture.index == recurse_name_idx)
+                            {
+                                let recurse_name = std::str::from_utf8(
+                                    &source_code[recurse_capture.node.byte_range()],
+                                )
+                                .unwrap();
+                                recurse_names.push(String::from(recurse_name));
+                            }
+                        }
+                    }
+                }
                 // include preceding neighbors as context while they remain relevant
                 // such as comments, python decorators, rust attributes, and c++ template arguments
                 while let Some(sibling) = node.prev_sibling() {
@@ -71,45 +152,38 @@ pub fn find_definition(
             }
         }
     }
-    result
+    recurse_names.sort();
+    recurse_names.dedup();
+    (result, recurse_names)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::range_union;
 
     const PYTHON_SOURCE: &[u8] = include_bytes!("../test_cases/python.py");
-
-    fn union_ranges(
-        ranges: impl AsRef<[std::ops::Range<usize>]>,
-    ) -> std::vec::Vec<std::ops::Range<usize>> {
-        let mut union: range_union::RangeUnion = Default::default();
-        union.extend(ranges);
-        union.into_iter().collect()
-    }
 
     #[test]
     fn python_examples() {
         // these ranges are 0-indexed and bat line numbers are 1-indexed so generate them with `nl -ba -v0`
         let cases = [
-            ("one", vec![11..34]),
-            ("two", vec![13..15]),
-            ("three", vec![13..14, 15..16]),
-            ("four", vec![13..14, 17..24]),
-            ("five", vec![13..14, 21..22]),
-            ("six", vec![13..14, 25..34]),
-            ("seven", vec![36..43]),
-            ("eight", vec![44..45]),
+            ("one", vec![11..34], vec!["hecks"]), // hm I don't like this
+            ("two", vec![13..15], vec![]),
+            ("three", vec![13..14, 15..16], vec![]),
+            ("four", vec![13..14, 17..24], vec![]),
+            ("five", vec![13..14, 21..22], vec![]),
+            ("six", vec![13..14, 25..34], vec!["hecks"]),
+            ("seven", vec![40..47], vec![]),
+            ("eight", vec![48..49], vec![]),
             // nine and ten are function parameters split across multiple lines;
             // I assume you want the whole signature because it'll be either short enough to not be a pain
             // or long enough to need further clarification if you only see one line from it.
-            ("nine", vec![13..14, 26..33]),
-            ("ten", vec![13..14, 26..33]),
-            ("int", vec![]),
-            ("abc", vec![39..41]),
-            ("xyz", vec![39..40, 41..42]),
-            ("def", vec![46..48]),
+            ("nine", vec![13..14, 26..33], vec![]),
+            ("ten", vec![13..14, 26..33], vec![]),
+            ("int", vec![], vec![]),
+            ("abc", vec![43..45], vec![]),
+            ("xyz", vec![43..44, 45..46], vec![]),
+            ("def", vec![50..52], vec![]),
         ];
         let config = config::Config::load_default();
         let language_info = config
@@ -117,12 +191,15 @@ mod tests {
             .unwrap()
             .unwrap();
         let mut parser = tree_sitter::Parser::new();
-        parser.set_language(language_info.language).unwrap();
+        parser.set_language(tree_sitter_python::language()).unwrap();
         let tree = parser.parse(PYTHON_SOURCE, None).unwrap();
-        for (query, expect_ranges) in cases {
+        for (query, expect_ranges, expect_recurses) in cases {
             let pattern = regex::Regex::new(&(String::from("^") + query + "$")).unwrap();
-            let result = find_definition(PYTHON_SOURCE, &tree, &language_info, &pattern);
-            assert_eq!(union_ranges(result).as_slice(), expect_ranges);
+            let (result, recurses) =
+                find_definition(PYTHON_SOURCE, &tree, &language_info, &pattern, true);
+            let result_vec: Vec<_> = result.iter().collect();
+            assert_eq!(result_vec, expect_ranges);
+            assert_eq!(recurses, expect_recurses);
         }
     }
 }

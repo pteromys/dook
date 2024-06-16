@@ -4,7 +4,8 @@ pub struct RangeUnion {
 }
 
 impl RangeUnion {
-    pub fn add(&mut self, range: &std::ops::Range<usize>) {
+    pub fn push(&mut self, range: impl std::borrow::Borrow<std::ops::Range<usize>>) {
+        let range = range.borrow();
         self.ends_by_start
             .entry(range.start)
             .and_modify(|e| *e = (*e).max(range.end))
@@ -13,7 +14,7 @@ impl RangeUnion {
 
     pub fn extend(&mut self, ranges: impl AsRef<[std::ops::Range<usize>]>) {
         for range in ranges.as_ref() {
-            self.add(range);
+            self.push(range);
         }
     }
 
@@ -29,6 +30,10 @@ impl RangeUnion {
 
     pub fn iter(&self) -> RangeUnionIterator {
         self.iter_filling_gaps(0)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.ends_by_start.is_empty()
     }
 }
 

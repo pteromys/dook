@@ -55,9 +55,8 @@ Also attempts to find assignments, class definitions, etc—because why should y
 
 - better language detection (e.g. llvm headers are C++ but most deviously end in lowercase .h)
 - more languages (and tests in more languages 😱)
-- recursive mode
-- show all calls to a function instead (ripgrep already gets mostly there so I care less)
-- end this project and make it instead a feature of ripgrep
+- show all calls to a function instead (`git grep -W` already gets mostly there so I care less)
+- end this project and make it instead a feature of ripgrep (may not be viable because the parsers for all the languages add up to a pretty large binary size)
 - Upgrade tree-sitter version so I can make better patterns. The current C and C++ query patterns make me want to scream.
 
 ## License

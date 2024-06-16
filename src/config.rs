@@ -56,6 +56,7 @@ struct LanguageConfig {
     sibling_patterns: std::vec::Vec<String>,
     parent_patterns: std::vec::Vec<String>,
     parent_exclusions: std::vec::Vec<String>,
+    recurse_patterns: Option<std::vec::Vec<MultiLineString>>,
 }
 
 #[derive(Debug, PartialEq, serde::Deserialize)]
@@ -110,22 +111,28 @@ impl Config {
             .iter()
             .map(String::from)
             .collect();
+        let recurse_patterns: std::vec::Vec<String> = language_config
+            .recurse_patterns
+            .as_ref()
+            .map(|v| v.iter().map(String::from).collect())
+            .unwrap_or_default();
         Some(LanguageInfo::new(
             language,
             match_patterns,
             &language_config.sibling_patterns,
             &language_config.parent_patterns,
             &language_config.parent_exclusions,
+            recurse_patterns,
         ))
     }
 }
 
 pub struct LanguageInfo {
-    pub language: tree_sitter::Language,
     pub match_patterns: std::vec::Vec<tree_sitter::Query>,
     pub sibling_patterns: std::vec::Vec<u16>,
     pub parent_patterns: std::vec::Vec<u16>,
     pub parent_exclusions: std::vec::Vec<u16>,
+    pub recurse_patterns: std::vec::Vec<tree_sitter::Query>,
 }
 
 impl LanguageInfo {
@@ -134,16 +141,19 @@ impl LanguageInfo {
         Item2: AsRef<str>,
         Item3: AsRef<str>,
         Item4: AsRef<str>,
+        Item5: AsRef<str>,
         I1: IntoIterator<Item = Item1>,
         I2: IntoIterator<Item = Item2>,
         I3: IntoIterator<Item = Item3>,
         I4: IntoIterator<Item = Item4>,
+        I5: IntoIterator<Item = Item5>,
     >(
         language: tree_sitter::Language,
         match_patterns: I1,
         sibling_patterns: I2,
         parent_patterns: I3,
         parent_exclusions: I4,
+        recurse_patterns: I5,
     ) -> Result<Self, tree_sitter::QueryError> {
         fn compile_queries<Item: AsRef<str>, II: IntoIterator<Item = Item>>(
             language: tree_sitter::Language,
@@ -194,11 +204,11 @@ impl LanguageInfo {
                 .collect()
         }
         Ok(Self {
-            language,
             match_patterns: compile_queries(language, match_patterns)?,
             sibling_patterns: resolve_node_types(language, sibling_patterns)?,
             parent_patterns: resolve_node_types(language, parent_patterns)?,
             parent_exclusions: resolve_field_names(language, parent_exclusions)?,
+            recurse_patterns: compile_queries(language, recurse_patterns)?,
         })
     }
 }
