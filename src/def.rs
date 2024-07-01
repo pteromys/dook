@@ -62,6 +62,7 @@ fn main() -> std::io::Result<std::process::ExitCode> {
     // grab cli args
     let cli = Cli::parse();
     let mut current_pattern = cli.pattern.clone();
+    let mut local_patterns: std::vec::Vec<regex::Regex> = vec![];
 
     // load config
     let custom_config = config::Config::load(cli.config)?;
@@ -109,6 +110,13 @@ fn main() -> std::io::Result<std::process::ExitCode> {
 
         // infer syntax, then search with tree_sitter
         let mut recurse_defs: std::vec::Vec<String> = vec![];
+        local_patterns.push(
+            match regex::Regex::new(&(String::from("^") + current_pattern.as_str() + "$")) {
+                Ok(p) => p,
+                Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, e)),
+            },
+        );
+        let local_pattern = local_patterns.last().unwrap();
         for path in filenames {
             let file_info = match searches::ParsedFile::from_filename(&path) {
                 None => continue,
@@ -134,23 +142,23 @@ fn main() -> std::io::Result<std::process::ExitCode> {
                 .map_err(|e| {
                     std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{}", e))
                 })?;
-            let local_pattern =
-                match regex::Regex::new(&(String::from("^") + current_pattern.as_str() + "$")) {
-                    Ok(p) => p,
-                    Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, e)),
-                };
             let (new_ranges, new_recurses) = searches::find_definition(
                 file_info.source_code.as_slice(),
                 &file_info.tree,
                 &language_info,
-                &local_pattern,
+                local_pattern,
                 true,
             );
             if !new_ranges.is_empty() {
                 print_ranges.push((path, new_ranges)); // TODO extend prev if new_ranges comes after in the same file
-                recurse_defs.extend(new_recurses.into_iter());
+                recurse_defs.extend(
+                    new_recurses.into_iter().filter(|name| {
+                        local_patterns.iter().all(|pattern| !pattern.is_match(name))
+                    }),
+                );
             }
         }
+        recurse_defs.dedup();
         if cli.recurse && recurse_defs.len() == 1 {
             current_pattern = regex::Regex::new(&regex::escape(&recurse_defs[0])).unwrap();
         } else {

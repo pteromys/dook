@@ -166,6 +166,7 @@ mod tests {
     #[test]
     fn python_examples() {
         // these ranges are 0-indexed and bat line numbers are 1-indexed so generate them with `nl -ba -v0`
+        #[rustfmt::skip]
         let cases = [
             ("one", vec![11..34], vec!["hecks"]), // hm I don't like this
             ("two", vec![13..15], vec![]),
@@ -183,7 +184,11 @@ mod tests {
             ("int", vec![], vec![]),
             ("abc", vec![43..45], vec![]),
             ("xyz", vec![43..44, 45..46], vec![]),
-            ("def", vec![50..52], vec![]),
+            ("def", vec![51..53], vec![]),
+            ("factorial", vec![55..57], vec!["permutations"]),
+            ("permutations", vec![59..63], vec!["permutations"]),
+            ("combinations", vec![65..67], vec!["factorial", "permutations"]),
+            ("combinations2", vec![69..71], vec!["factorial"]),
         ];
         let config = config::Config::load_default();
         let language_info = config

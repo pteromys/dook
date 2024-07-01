@@ -48,5 +48,24 @@ seven = {
 
 eight = None
 
+
 # i hope i guessed right that you care about string dictionary keys
 seven['def'] = ['d', 'e', 'f']
+
+
+def factorial(n: int) -> int:
+    return permutations(n, n)
+
+
+def permutations(n: int, k: int) -> int:
+    if k <= 1:
+        return 1
+    return n * permutations(n - 1, k - 1)
+
+
+def combinations(n: int, k: int) -> float:
+    return permutations(n, k) / factorial(n - k)
+
+
+def combinations2(n: int, k: int) -> float:
+    return factorial(n) / factorial(k) / factorial(n - k)
