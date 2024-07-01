@@ -20,7 +20,7 @@ enum EnablementLevel {
 }
 
 #[derive(clap::Parser, Debug)]
-/// Find a definition.
+/// dook: Definition lookup in your code.
 struct Cli {
     /// Regex to match against symbol names.
     pattern: regex::Regex,

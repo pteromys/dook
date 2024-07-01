@@ -4,7 +4,7 @@
 //     tree_sitter 0.22 will support alternation of node types, allowing better concision
 //     tree_sitter 0.22 will support context_cursor.set_max_start_depth(0)
 
-const DEFAULT_CONFIG: &str = include_str!("def.json");
+const DEFAULT_CONFIG: &str = include_str!("dook.json");
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, serde::Deserialize, strum::EnumIter)]
 #[serde(rename_all = "lowercase")]
@@ -68,11 +68,11 @@ impl Config {
             // explicitly requested file paths expose any errors reading
             Some(p) => std::fs::read(std::path::PathBuf::from(p))?,
             // the default file path is more forgiving...
-            None => match directories::ProjectDirs::from("com", "melonisland", "def") {
+            None => match directories::ProjectDirs::from("com", "melonisland", "dook") {
                 // if we have no idea how to find it, just give up
                 None => return Ok(None),
                 Some(d) => {
-                    let default_path = d.config_dir().join("def.json");
+                    let default_path = d.config_dir().join("dook.json");
                     match std::fs::read(&default_path) {
                         // unwrap the contents if we successfully read it
                         Ok(contents) => contents,

@@ -1,9 +1,16 @@
 [package]
-name = "def"
+name = "dook"
 version = "0.1.0"
 edition = "2021"
 authors = ["pteromys <pteromys@gmail.com>"]
-publish = false
+description = "Look up definitions in your code"
+license = "MIT"
+homepage = "https://github.com/pteromys/dook"
+repository = "https://github.com/pteromys/dook"
+readme = "README.md"
+keywords = ["search", "grep", "tree-sitter", "code-search"]
+categories = ["command-line-utilities", "development-tools"]
+include = ["/src", "/test_cases", "/README.md", "/LICENSE"]
 
 [build-dependencies]
 cc="*"
@@ -29,5 +36,5 @@ tree-sitter-rust = "0.20"
 tree-sitter-typescript = "0.20"
 
 [[bin]]
-path = "src/def.rs"
-name = "def"
+path = "src/main.rs"
+name = "dook"
