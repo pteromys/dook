@@ -12,9 +12,6 @@ keywords = ["search", "grep", "tree-sitter", "code-search"]
 categories = ["command-line-utilities", "development-tools"]
 include = ["/src", "/test_cases", "/README.md", "/LICENSE"]
 
-[build-dependencies]
-cc="*"
-
 [dependencies]
 clap = { version = "4.5.4", features = ["derive", "unicode", "wrap_help"] }
 console = "0.15"
