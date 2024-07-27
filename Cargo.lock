@@ -162,7 +162,7 @@ dependencies = [
 
 [[package]]
 name = "dook"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "console",
