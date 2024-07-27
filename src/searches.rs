@@ -161,7 +161,24 @@ pub fn find_definition(
 mod tests {
     use super::*;
 
-    const PYTHON_SOURCE: &[u8] = include_bytes!("../test_cases/python.py");
+    fn verify_examples(
+        language_name: config::LanguageName,
+        source: &[u8],
+        cases: &[(&str, Vec<std::ops::Range<usize>>, Vec<&str>)],
+    ) {
+        let config = config::Config::load_default();
+        let language_info = config.get_language_info(language_name).unwrap().unwrap();
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(language_name.get_language()).unwrap();
+        let tree = parser.parse(source, None).unwrap();
+        for (query, expect_ranges, expect_recurses) in cases {
+            let pattern = regex::Regex::new(&(String::from("^") + query + "$")).unwrap();
+            let (result, recurses) = find_definition(source, &tree, &language_info, &pattern, true);
+            let result_vec: Vec<_> = result.iter().collect();
+            assert_eq!(result_vec, *expect_ranges);
+            assert_eq!(recurses, *expect_recurses);
+        }
+    }
 
     #[test]
     fn python_examples() {
@@ -190,21 +207,35 @@ mod tests {
             ("combinations", vec![65..67], vec!["factorial", "permutations"]),
             ("combinations2", vec![69..71], vec!["factorial"]),
         ];
-        let config = config::Config::load_default();
-        let language_info = config
-            .get_language_info(config::LanguageName::Python)
-            .unwrap()
-            .unwrap();
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(tree_sitter_python::language()).unwrap();
-        let tree = parser.parse(PYTHON_SOURCE, None).unwrap();
-        for (query, expect_ranges, expect_recurses) in cases {
-            let pattern = regex::Regex::new(&(String::from("^") + query + "$")).unwrap();
-            let (result, recurses) =
-                find_definition(PYTHON_SOURCE, &tree, &language_info, &pattern, true);
-            let result_vec: Vec<_> = result.iter().collect();
-            assert_eq!(result_vec, expect_ranges);
-            assert_eq!(recurses, expect_recurses);
-        }
+        verify_examples(
+            config::LanguageName::Python,
+            include_bytes!("../test_cases/python.py"),
+            &cases,
+        );
+    }
+
+    #[test]
+    fn js_examples() {
+        // these ranges are 0-indexed and bat line numbers are 1-indexed so generate them with `nl -ba -v0`
+        #[rustfmt::skip]
+        let cases = [
+            ("one", vec![0..1], vec![]),  // let
+            ("two", vec![1..2], vec![]),  // const
+            ("three", vec![3..6], vec![]),  // function declaration
+            // old-style class, prototype shenanigans
+            ("four", vec![7..10, 11..17, 20..23], vec![]),
+            ("f", vec![12..15], vec![]),  // object key, bare
+            ("flop", vec![12..15], vec![]),  // named function expression
+            ("eff", vec![15..16], vec![]),  // object key, in quotes
+            ("g", vec![20..23], vec![]),  // assign to dot-property
+            ("five", vec![24..29], vec![]),  // new-style class
+            ("six", vec![24..26], vec![]),  // class member variable
+            ("seven", vec![24..25, 27..28], vec![]),  // getter
+        ];
+        verify_examples(
+            config::LanguageName::Js,
+            include_bytes!("../test_cases/javascript.js"),
+            &cases,
+        );
     }
 }
