@@ -39,13 +39,13 @@ struct Cli {
     #[arg(short, long, action = clap::ArgAction::Count)]
     plain: u8,
 
-    /// Recurse if the definition contains exactly one function or constructor call [default].
-    #[arg(long = "recurse", overrides_with = "recurse")]
-    _no_recurse: bool,
-
-    /// Don't recurse.
-    #[arg(long = "no-recurse", action = clap::ArgAction::SetFalse)]
+    /// Recurse if the definition contains exactly one function or constructor call.
+    #[arg(short, long)]
     recurse: bool,
+
+    /// Don't recurse [default].
+    #[arg(long, overrides_with = "recurse")]
+    _no_recurse: bool,
 
     /// Dump the syntax tree of every matched file, for debugging extraction queries.
     #[arg(long)]
