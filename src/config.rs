@@ -6,8 +6,7 @@
 
 const DEFAULT_CONFIG: &str = include_str!("dook.json");
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, serde::Deserialize, strum::EnumIter)]
-#[serde(rename_all = "lowercase")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, strum::EnumIter)]
 pub enum LanguageName {
     Rust,
     Python,
@@ -17,6 +16,20 @@ pub enum LanguageName {
     C,
     CPlusPlus,
     Go,
+}
+
+merde::derive! {
+    impl (JsonSerialize, Deserialize) for enum LanguageName
+    string_like {
+        "rust" => Rust,
+        "python" => Python,
+        "js" => Js,
+        "ts" => Ts,
+        "tsx" => Tsx,
+        "c" => C,
+        "cplusplus" => CPlusPlus,
+        "go" => Go,
+    }
 }
 
 impl LanguageName {
@@ -34,11 +47,53 @@ impl LanguageName {
     }
 }
 
-#[derive(Debug, PartialEq, serde::Deserialize)]
-#[serde(untagged)]
+#[derive(Debug, PartialEq)]
 enum MultiLineString {
     One(String),
     Many(std::vec::Vec<String>),
+}
+
+impl merde::json::JsonSerialize for MultiLineString {
+    fn json_serialize(&self, s: &mut merde::json::JsonSerializer) {
+        match self {
+            MultiLineString::One(v) => s.write_str(v),
+            MultiLineString::Many(vs) => {
+                let mut a = s.write_arr();
+                for v in vs {
+                    a.elem(v);
+                }
+            }
+        }
+    }
+}
+
+impl<'s> merde::Deserialize<'s> for MultiLineString {
+    async fn deserialize<D>(de: &mut D) -> Result<Self, D::Error<'s>>
+    where
+        D: merde::Deserializer<'s> + ?Sized,
+    {
+        match de.next()? {
+            merde::Event::Str(v) => Ok(MultiLineString::One(v.repeat(1))), // there's probably a better way to clone CowStr to String
+            merde::Event::ArrayStart(_) => {
+                let mut vs: Vec<String> = Vec::new();
+                loop {
+                    match de.next()? {
+                        merde::Event::ArrayEnd => break,
+                        merde::Event::Str(v) => vs.push(v.repeat(1)),
+                        ev => Err(merde::MerdeError::UnexpectedEvent {
+                            got: merde::EventType::from(&ev),
+                            expected: &[merde::EventType::Str],
+                        })?,
+                    }
+                }
+                Ok(MultiLineString::Many(vs))
+            }
+            ev => Err(merde::MerdeError::UnexpectedEvent {
+                got: merde::EventType::from(&ev),
+                expected: &[merde::EventType::Str, merde::EventType::ArrayStart],
+            })?,
+        }
+    }
 }
 
 impl From<&MultiLineString> for String {
@@ -50,20 +105,30 @@ impl From<&MultiLineString> for String {
     }
 }
 
-#[derive(Debug, PartialEq, serde::Deserialize)]
+#[derive(Debug, PartialEq)]
 struct LanguageConfig {
     match_patterns: std::vec::Vec<MultiLineString>,
     sibling_patterns: std::vec::Vec<String>,
     parent_patterns: std::vec::Vec<String>,
     parent_exclusions: std::vec::Vec<String>,
     recurse_patterns: Option<std::vec::Vec<MultiLineString>>,
+    comments: Option<Vec<String>>,
 }
 
-#[derive(Debug, PartialEq, serde::Deserialize)]
+merde::derive! {
+    impl (Deserialize) for struct LanguageConfig { match_patterns, sibling_patterns, parent_patterns, parent_exclusions, recurse_patterns, comments }
+}
+
+#[derive(Debug, PartialEq)]
 pub struct Config(std::collections::HashMap<LanguageName, LanguageConfig>);
+
+merde::derive! {
+    impl (Deserialize) for struct Config transparent
+}
 
 impl Config {
     pub fn load(explicit_path: Option<std::ffi::OsString>) -> std::io::Result<Option<Self>> {
+        use merde::IntoStatic;
         let file_contents = match explicit_path {
             // explicitly requested file paths expose any errors reading
             Some(p) => std::fs::read(std::path::PathBuf::from(p))?,
@@ -88,15 +153,21 @@ impl Config {
                     }
                 }
             },
-        };
-        match serde_json::from_slice(&file_contents.to_ascii_lowercase()) {
-            Ok(c) => Ok(Some(c)),
-            Err(e) => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e)),
+        }.to_ascii_lowercase();
+        let contents_lowercase = std::str::from_utf8(&file_contents)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        let deserialize_result: Result<Config, _> = merde::json::from_str(contents_lowercase);
+        match deserialize_result {
+            Ok(c) => Ok(Some(c.into_static())),
+            Err(e) => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                e.to_static(),
+            )),
         }
     }
 
     pub fn load_default() -> Self {
-        serde_json::from_slice(DEFAULT_CONFIG.to_ascii_lowercase().as_bytes()).unwrap()
+        merde::json::from_str(&DEFAULT_CONFIG.to_ascii_lowercase()).unwrap()
     }
 
     pub fn get_language_info(
