@@ -117,16 +117,32 @@ pub fn find_definition(
                 }
                 // include preceding neighbors as context while they remain relevant
                 // such as comments, python decorators, rust attributes, and c++ template arguments
+                let mut last_ambiguously_attached_sibling_range: Option<std::ops::Range<usize>> =
+                    None;
                 while let Some(sibling) = node.prev_sibling() {
                     if language_info.sibling_patterns.contains(&sibling.kind_id()) {
-                        result.push(
-                            sibling.range().start_point.row
-                                ..sibling.range().end_point.row.saturating_add(1),
-                        );
+                        let new_sibling_range = sibling.range().start_point.row
+                            ..sibling.range().end_point.row.saturating_add(1);
+                        if let Some(r) = last_ambiguously_attached_sibling_range {
+                            result.push(r);
+                        }
+                        last_ambiguously_attached_sibling_range = Some(new_sibling_range);
                         node = sibling;
                     } else {
+                        if let Some(r) = last_ambiguously_attached_sibling_range {
+                            if sibling.range().end_point.row.saturating_add(1) < r.end {
+                                result.push(
+                                    sibling.range().end_point.row.saturating_add(1).max(r.start)
+                                        ..r.end,
+                                );
+                            }
+                            last_ambiguously_attached_sibling_range = None;
+                        }
                         break;
                     }
+                }
+                if let Some(r) = last_ambiguously_attached_sibling_range {
+                    result.push(r);
                 }
                 // then include a header line from each relevant ancestor
                 while let Some(parent) = node.parent() {

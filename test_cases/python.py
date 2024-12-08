@@ -12,7 +12,7 @@ def identity(f):
 # yeehaw
 @dataclasses.dataclass
 class one:
-    two: int = 52
+    two: int = 52  # this is comment goes with two but not three
     three: int
 
     # this is a comment
