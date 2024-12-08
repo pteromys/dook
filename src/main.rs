@@ -43,7 +43,7 @@ struct Cli {
     #[arg(short, long)]
     recurse: bool,
 
-    /// Don't recurse [default].
+    /// Don't recurse (default).
     #[arg(long, overrides_with = "recurse")]
     _no_recurse: bool,
 
