@@ -18,7 +18,7 @@ console = "0.15"
 directories = "5.0.1"
 env_logger = "0.11.3"
 log = "0.4.21"
-merde = { version = "6.0.0", features = ["core", "deserialize", "json"] }
+merde = { version = "6.2.1", features = ["core", "deserialize", "json"] }
 os_str_bytes = "7.0"
 regex = "1.10"  # match ripgrep's default engine since we shell out to ripgrep
 strum = { version = "0.26", features = ["derive"] }

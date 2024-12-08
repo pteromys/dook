@@ -61,6 +61,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "autocfg"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ace50bade8e6234aa140d9a2f552bbee1db4d353f69b8217bc503490fc1a9f26"
+
+[[package]]
 name = "bitflags"
 version = "2.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -339,9 +345,9 @@ checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
 
 [[package]]
 name = "merde"
-version = "6.0.0"
+version = "6.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ffc10dd4cac293fd2ca636e107b321d0855fdc5c42bb4e9c6a1d88ecaf969024"
+checksum = "622900335f716e52ceda70c7b46d1ba7de8ca019a8a065da31bd488491a88f56"
 dependencies = [
  "merde_core",
  "merde_json",
@@ -350,18 +356,19 @@ dependencies = [
 
 [[package]]
 name = "merde_core"
-version = "6.0.0"
+version = "7.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82931b39c06dc96587945a470442e00966f5a49cb519b4b99ed7440d5edb2b60"
+checksum = "4bb59aaa1df9467427eed98ed8a8b63bf4d66901a114d2984a5ed234c328fedb"
 dependencies = [
+ "ordered-float",
  "rubicon",
 ]
 
 [[package]]
 name = "merde_json"
-version = "6.0.0"
+version = "6.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "63400cd0c40926538b0e3e764819c4b7763081f987997690dc66e5f101eab739"
+checksum = "ee08614931a05fd1bddf5ae8b76eb721600ab109fb77cdbb96609faa1fc8244e"
 dependencies = [
  "lexical-parse-float",
  "merde_core",
@@ -369,9 +376,9 @@ dependencies = [
 
 [[package]]
 name = "merde_time"
-version = "4.0.11"
+version = "4.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2f81670de5eed4eeaab27a9db2eda1066ce8cde571a51e6ddada2be259d9979"
+checksum = "31b06aab70107c98ec48a2ce6b9cf51e02c7074ecf6b64fd246858215d3abcc3"
 dependencies = [
  "merde_core",
  "merde_json",
@@ -385,10 +392,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51d515d32fb182ee37cda2ccdcb92950d6a3c2893aa280e540671c2cd0f3b1d9"
 
 [[package]]
+name = "num-traits"
+version = "0.2.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
 name = "option-ext"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
+
+[[package]]
+name = "ordered-float"
+version = "4.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "83e7ccb95e240b7c9506a3d544f10d935e142cc90b0a1d56954fb44d89ad6b97"
+dependencies = [
+ "num-traits",
+]
 
 [[package]]
 name = "os_str_bytes"
