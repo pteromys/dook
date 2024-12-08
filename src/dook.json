@@ -56,8 +56,10 @@
         "  (typed_parameter . (identifier) @name) @def",
         "  (default_parameter name: (_) @name) @def",
         "  (typed_default_parameter name: (_) @name) @def",
+        "  (call function: (identifier) @f (#eq? @f \"setattr\") arguments: (argument_list (\"(\" (_) \",\" (string (string_content) @name)))) @def",
         "]"
-      ]
+      ],
+      "(call function: (attribute attribute: (identifier) @f (#any-of? @f \"__setattr__\" \"__setitem__\")) arguments: (argument_list ((string (string_content) @name) \",\" (_) \")\"))) @def"
     ],
     "recurse_patterns": [
       [

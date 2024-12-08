@@ -69,3 +69,12 @@ def combinations(n: int, k: int) -> float:
 
 def combinations2(n: int, k: int) -> float:
     return factorial(n) / factorial(k) / factorial(n - k)
+
+# also try to catch setattr and friends
+def shenanigans(x):
+    setattr(x, 'attr', 1)  # yes 🦆
+    object.__setattr__(x, 'attr', 2)  # yes 🦆
+    x.__setitem__('attr', 3)  # yes 🦆
+    dict.__setitem__(x, 'attr', 4)  # yes 🦆
+    setattr('attr', 'nope', 5)  # no!!1 🪿
+    object.__setattr__(x, 'attr')  # I mean this would throw if you actually ran it

@@ -222,6 +222,7 @@ mod tests {
             ("permutations", vec![59..63], vec!["permutations"]),
             ("combinations", vec![65..67], vec!["factorial", "permutations"]),
             ("combinations2", vec![69..71], vec!["factorial"]),
+            ("attr", vec![73..78], vec!["setattr"]),
         ];
         verify_examples(
             config::LanguageName::Python,
