@@ -19,7 +19,7 @@ pub enum LanguageName {
 }
 
 merde::derive! {
-    impl (JsonSerialize, Deserialize) for enum LanguageName
+    impl (Serialize, Deserialize) for enum LanguageName
     string_like {
         "rust" => Rust,
         "python" => Python,
@@ -53,36 +53,48 @@ enum MultiLineString {
     Many(std::vec::Vec<String>),
 }
 
-impl merde::json::JsonSerialize for MultiLineString {
-    fn json_serialize(&self, s: &mut merde::json::JsonSerializer) {
+impl merde::Serialize for MultiLineString {
+    async fn serialize<'se>(
+        &'se self,
+        s: &'se mut dyn merde::DynSerializer,
+    ) -> Result<(), merde::MerdeError<'static>> {
         match self {
-            MultiLineString::One(v) => s.write_str(v),
+            MultiLineString::One(v) => {
+                s.write(merde::Event::Str(merde::CowStr::copy_from_str(v)))
+                    .await
+            }
             MultiLineString::Many(vs) => {
-                let mut a = s.write_arr();
+                s.write(merde::Event::ArrayStart(merde::ArrayStart {
+                    size_hint: Some(vs.len()),
+                }))
+                .await?;
                 for v in vs {
-                    a.elem(v);
+                    v.serialize(s).await?;
                 }
+                s.write(merde::Event::ArrayEnd).await
             }
         }
     }
 }
 
-impl<'s> merde::Deserialize<'s> for MultiLineString {
-    async fn deserialize<D>(de: &mut D) -> Result<Self, D::Error<'s>>
-    where
-        D: merde::Deserializer<'s> + ?Sized,
-    {
-        match de.next()? {
+impl<'de> merde::Deserialize<'de> for MultiLineString {
+    async fn deserialize(
+        de: &mut dyn merde::DynDeserializer<'de>,
+    ) -> Result<Self, merde::MerdeError<'de>> {
+        match de.next().await? {
             merde::Event::Str(v) => Ok(MultiLineString::One(v.repeat(1))), // there's probably a better way to clone CowStr to String
             merde::Event::ArrayStart(_) => {
                 let mut vs: Vec<String> = Vec::new();
                 loop {
-                    match de.next()? {
+                    match de.next().await? {
                         merde::Event::ArrayEnd => break,
                         merde::Event::Str(v) => vs.push(v.repeat(1)),
                         ev => Err(merde::MerdeError::UnexpectedEvent {
                             got: merde::EventType::from(&ev),
                             expected: &[merde::EventType::Str],
+                            help: Some(String::from(
+                                "multiline string must be a string or an array of strings",
+                            )),
                         })?,
                     }
                 }
@@ -91,6 +103,9 @@ impl<'s> merde::Deserialize<'s> for MultiLineString {
             ev => Err(merde::MerdeError::UnexpectedEvent {
                 got: merde::EventType::from(&ev),
                 expected: &[merde::EventType::Str, merde::EventType::ArrayStart],
+                help: Some(String::from(
+                    "multiline string must be a string or an array of strings",
+                )),
             })?,
         }
     }
@@ -161,7 +176,7 @@ impl Config {
             Ok(c) => Ok(Some(c.into_static())),
             Err(e) => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                e.to_static(),
+                e.into_static(),
             )),
         }
     }

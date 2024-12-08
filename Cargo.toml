@@ -2,6 +2,7 @@
 name = "dook"
 version = "0.1.1"
 edition = "2021"
+rust-version = "1.83"
 authors = ["pteromys <pteromys@gmail.com>"]
 description = "Look up definitions in your code"
 license = "MIT"
@@ -17,8 +18,9 @@ clap = { version = "4.5.4", features = ["derive", "unicode", "wrap_help"] }
 console = "0.15"
 directories = "5.0.1"
 env_logger = "0.11.3"
+hyperpolyglot = "0.1.7"
 log = "0.4.21"
-merde = { version = "6.2.1", features = ["core", "deserialize", "json"] }
+merde = { version = "10.0.0", features = ["core", "deserialize", "json"] }
 os_str_bytes = "7.0"
 regex = "1.10"  # match ripgrep's default engine since we shell out to ripgrep
 strum = { version = "0.26", features = ["derive"] }

@@ -9,35 +9,23 @@ pub struct ParsedFile {
 impl ParsedFile {
     pub fn from_filename(path: &std::ffi::OsString) -> Option<ParsedFile> {
         // TODO 0: add more languages
-        // TODO 1: sniff syntax by content
-        //     maybe use shebangs
-        //     maybe https://github.com/sharkdp/bat/blob/master/src/syntax_mapping.rs
+        // TODO 1: support embeds
         // TODO 2: group by language and do a second pass with language-specific regexes?
-        use os_str_bytes::OsStrBytesExt;
-        let language_name = if path.ends_with(".rs") {
-            config::LanguageName::Rust
-        } else if path.ends_with(".py") || path.ends_with(".pyx") {
-            config::LanguageName::Python
-        } else if path.ends_with(".js") {
-            config::LanguageName::Js
-        } else if path.ends_with(".ts") {
-            config::LanguageName::Ts
-        } else if path.ends_with(".tsx") {
-            config::LanguageName::Tsx
-        } else if path.ends_with(".c") || path.ends_with(".h") {
-            config::LanguageName::C
-        } else if path.ends_with(".cpp")
-            || path.ends_with(".hpp")
-            || path.ends_with(".cxx")
-            || path.ends_with(".hxx")
-            || path.ends_with(".C")
-            || path.ends_with(".H")
+        // strings from https://github.com/monkslc/hyperpolyglot/blob/master/languages.yml
+        let language_name = match hyperpolyglot::detect(std::path::Path::new(path))
+            .unwrap()
+            .unwrap()
+            .language()
         {
-            config::LanguageName::CPlusPlus
-        } else if path.ends_with(".go") {
-            config::LanguageName::Go
-        } else {
-            return None;
+            "Rust" => config::LanguageName::Rust,
+            "Python" => config::LanguageName::Python,
+            "JavaScript" => config::LanguageName::Js,
+            "TypeScript" => config::LanguageName::Ts,
+            "TSX" => config::LanguageName::Tsx,
+            "C" => config::LanguageName::C,
+            "C++" => config::LanguageName::CPlusPlus,
+            "Go" => config::LanguageName::Go,
+            _ => return None,
         };
         let source_code = std::fs::read(path).unwrap(); // TODO transmit error
         Self::from_bytes(source_code, language_name)
