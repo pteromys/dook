@@ -1,6 +1,12 @@
 changelog 🧚
 ============
 
+## Unreleased
+
+- Config file format version 2:
+  - Add integer "version" field.
+  - Move per-language config to live under "languages".
+
 ## 0.2.0 (2024-12-14)
 
 - Don't recurse by default—took too long (and was wrong anyway) on python's dict.get(). Sorry!

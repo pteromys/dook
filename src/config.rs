@@ -135,11 +135,55 @@ merde::derive! {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Config(std::collections::HashMap<LanguageName, LanguageConfig>);
+pub struct ConfigV1(std::collections::HashMap<LanguageName, LanguageConfig>);
 
 merde::derive! {
-    impl (Deserialize) for struct Config transparent
+    impl (Deserialize) for struct ConfigV1 transparent
 }
+
+#[derive(Debug, PartialEq)]
+pub struct ConfigV2 {
+    version: u64,
+    languages: std::collections::HashMap<LanguageName, LanguageConfig>,
+}
+
+merde::derive! {
+    impl (Deserialize) for struct ConfigV2 { version, languages }
+}
+
+pub enum ConfigFormat {
+    V1,
+    V2,
+}
+
+impl<'de> merde::Deserialize<'de> for ConfigFormat {
+    async fn deserialize(
+        de: &mut dyn merde::DynDeserializer<'de>,
+    ) -> Result<Self, merde::MerdeError<'de>> {
+        use merde::DynDeserializerExt;
+        de.next().await?.into_map_start()?;
+        loop {
+            match de.next().await? {
+                merde::Event::Str(key) => {
+                    if key == "version" {
+                        return match de.next().await?.into_u64()? {
+                            2 => Ok(ConfigFormat::V2),
+                            _ => Err(merde::MerdeError::OutOfRange),
+                        };
+                    }
+                    let _: merde::Value<'de> = de.t().await?;
+                }
+                merde::Event::MapEnd => return Ok(ConfigFormat::V1),
+                _ => break,
+            }
+        }
+        Err(merde::MerdeError::MissingProperty(
+            merde::CowStr::copy_from_str("version"),
+        ))
+    }
+}
+
+pub use ConfigV2 as Config;
 
 impl Config {
     pub fn load(explicit_path: Option<std::ffi::OsString>) -> std::io::Result<Option<Self>> {
@@ -171,7 +215,7 @@ impl Config {
         }.to_ascii_lowercase();
         let contents_lowercase = std::str::from_utf8(&file_contents)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        let deserialize_result: Result<Config, _> = merde::json::from_str(contents_lowercase);
+        let deserialize_result = Self::load_from_str(contents_lowercase);
         match deserialize_result {
             Ok(c) => Ok(Some(c.into_static())),
             Err(e) => Err(std::io::Error::new(
@@ -181,16 +225,31 @@ impl Config {
         }
     }
 
+    fn load_from_str(contents_lowercase: &str) -> Result<Self, merde::MerdeError> {
+        // first pass to hunt for the config version
+        let config_format: ConfigFormat = merde::json::from_str(contents_lowercase)?;
+        // second pass depending on version
+        match config_format {
+            ConfigFormat::V1 => {
+                let ConfigV1(language_configs) = merde::json::from_str(contents_lowercase)?;
+                Ok(ConfigV2 {
+                    version: 2,
+                    languages: language_configs,
+                })
+            }
+            ConfigFormat::V2 => merde::json::from_str::<ConfigV2>(contents_lowercase),
+        }
+    }
+
     pub fn load_default() -> Self {
-        merde::json::from_str(&DEFAULT_CONFIG.to_ascii_lowercase()).unwrap()
+        Self::load_from_str(&DEFAULT_CONFIG.to_ascii_lowercase()).unwrap()
     }
 
     pub fn get_language_info(
         &self,
         language_name: LanguageName,
     ) -> Option<Result<LanguageInfo, tree_sitter::QueryError>> {
-        let Self(config_map) = self;
-        let language_config = config_map.get(&language_name)?;
+        let language_config = self.languages.get(&language_name)?;
         let language = language_name.get_language();
         let match_patterns: std::vec::Vec<String> = language_config
             .match_patterns
