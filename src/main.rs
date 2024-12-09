@@ -22,8 +22,8 @@ enum EnablementLevel {
 #[derive(clap::Parser, Debug)]
 /// dook: Definition lookup in your code.
 struct Cli {
-    /// Regex to match against symbol names.
-    pattern: regex::Regex,
+    /// Regex to match against symbol names. Required unless using --dump.
+    pattern: Option<regex::Regex>,
 
     /// Config file path
     #[arg(short, long, required = false)]
@@ -47,9 +47,9 @@ struct Cli {
     #[arg(long, overrides_with = "recurse")]
     _no_recurse: bool,
 
-    /// Dump the syntax tree of every matched file, for debugging extraction queries.
-    #[arg(long)]
-    dump: bool,
+    /// Dump the syntax tree of the specified file, for debugging extraction queries.
+    #[arg(long, required = false)]
+    dump: Option<std::ffi::OsString>,
 }
 
 fn main() -> std::io::Result<std::process::ExitCode> {
@@ -61,7 +61,36 @@ fn main() -> std::io::Result<std::process::ExitCode> {
 
     // grab cli args
     let cli = Cli::parse();
-    let mut current_pattern = cli.pattern.clone();
+    let use_color = if cli.color != EnablementLevel::Auto {
+        cli.color
+    } else if console::colors_enabled() {
+        EnablementLevel::Always
+    } else {
+        EnablementLevel::Never
+    };
+
+    // check for dump-parse mode
+    if let Some(dump_target) = cli.dump {
+        let file_info = match searches::ParsedFile::from_filename(&dump_target) {
+            None => return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "")),
+            Some(f) => f,
+        };
+        dumptree::dump_tree(
+            &file_info.tree,
+            file_info.source_code.as_slice(),
+            use_color == EnablementLevel::Always,
+        );
+        return Ok(std::process::ExitCode::SUCCESS);
+    }
+    let mut current_pattern = match cli.pattern {
+        Some(pattern) => pattern.clone(),
+        None => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "pattern is required unless using --dump",
+            ))
+        }
+    };
     let mut local_patterns: std::vec::Vec<regex::Regex> = vec![];
 
     // load config
@@ -122,10 +151,6 @@ fn main() -> std::io::Result<std::process::ExitCode> {
                 None => continue,
                 Some(f) => f,
             };
-            if cli.dump {
-                dumptree::dump_tree(&file_info.tree, file_info.source_code.as_slice());
-                continue;
-            }
             let language_info = custom_config
                 .as_ref()
                 .and_then(|c| c.get_language_info(file_info.language_name))
@@ -173,19 +198,12 @@ fn main() -> std::io::Result<std::process::ExitCode> {
         cli.plain < 2 && console::Term::stdout().is_term()
     };
     let mut pager = paging::MaybePager::new(enable_paging);
-    let bat_color = if cli.color != EnablementLevel::Auto {
-        cli.color
-    } else if console::colors_enabled() {
-        EnablementLevel::Always
-    } else {
-        EnablementLevel::Never
-    };
     let bat_size = console::Term::stdout().size_checked();
     for (path, ranges) in print_ranges.iter() {
         let mut cmd = std::process::Command::new("bat");
         let cmd = cmd
             .arg("--paging=never")
-            .arg(format!("--color={:?}", bat_color).to_lowercase());
+            .arg(format!("--color={:?}", use_color).to_lowercase());
         let cmd = match bat_size {
             Some((_rows, cols)) => cmd.arg(format!("--terminal-width={}", cols)),
             None => cmd,
