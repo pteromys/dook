@@ -24,14 +24,14 @@ merde = { version = "10.0.0", features = ["core", "deserialize", "json"] }
 os_str_bytes = "7.0"
 regex = "1.10"  # match ripgrep's default engine since we shell out to ripgrep
 strum = { version = "0.26", features = ["derive"] }
-tree-sitter = "0.20"
-tree-sitter-c = "0.20"
-tree-sitter-cpp = "0.20"
-tree-sitter-go = "0.20"
-tree-sitter-javascript = "0.20"
-tree-sitter-python = "0.20"
-tree-sitter-rust = "0.20"
-tree-sitter-typescript = "0.20"
+tree-sitter = "0.23"
+tree-sitter-c = "0.23"
+tree-sitter-cpp = "0.23"
+tree-sitter-go = "0.23"
+tree-sitter-javascript = "0.23"
+tree-sitter-python = "0.23"
+tree-sitter-rust = "0.23"
+tree-sitter-typescript = "0.23"
 
 [[bin]]
 path = "src/main.rs"

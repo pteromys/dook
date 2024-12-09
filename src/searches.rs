@@ -36,7 +36,7 @@ impl ParsedFile {
         language_name: config::LanguageName,
     ) -> Option<ParsedFile> {
         let mut parser = tree_sitter::Parser::new();
-        parser.set_language(language_name.get_language()).unwrap();
+        parser.set_language(&language_name.get_language()).unwrap();
         let tree = parser.parse(&source_code, None).unwrap();
         Some(ParsedFile {
             language_name,
@@ -108,7 +108,10 @@ pub fn find_definition(
                 let mut last_ambiguously_attached_sibling_range: Option<std::ops::Range<usize>> =
                     None;
                 while let Some(sibling) = node.prev_sibling() {
-                    if language_info.sibling_patterns.contains(&sibling.kind_id()) {
+                    if match std::num::NonZero::new(sibling.kind_id()) {
+                        None => false,
+                        Some(kind_id) => language_info.sibling_patterns.contains(&kind_id),
+                    } {
                         let new_sibling_range = sibling.range().start_point.row
                             ..sibling.range().end_point.row.saturating_add(1);
                         if let Some(r) = last_ambiguously_attached_sibling_range {
@@ -135,13 +138,16 @@ pub fn find_definition(
                 // then include a header line from each relevant ancestor
                 while let Some(parent) = node.parent() {
                     // TODO interval arithmetic
-                    if language_info.parent_patterns.contains(&parent.kind_id()) {
+                    if match std::num::NonZero::new(parent.kind_id()) {
+                        None => false,
+                        Some(kind_id) => language_info.parent_patterns.contains(&kind_id),
+                    } {
                         let context_start = parent.range().start_point.row;
                         let context_end = context_start.max(
                             language_info
                                 .parent_exclusions
                                 .iter()
-                                .filter_map(|field_id| parent.child_by_field_id(*field_id))
+                                .filter_map(|field_id| parent.child_by_field_id((*field_id).get()))
                                 .map(|c| {
                                     c.range().start_point.row.saturating_sub(1)
                                     // TODO only subtract if exclusion is start of line?
@@ -173,7 +179,7 @@ mod tests {
         let config = config::Config::load_default();
         let language_info = config.get_language_info(language_name).unwrap().unwrap();
         let mut parser = tree_sitter::Parser::new();
-        parser.set_language(language_name.get_language()).unwrap();
+        parser.set_language(&language_name.get_language()).unwrap();
         let tree = parser.parse(source, None).unwrap();
         for (query, expect_ranges, expect_recurses) in cases {
             let pattern = regex::Regex::new(&(String::from("^") + query + "$")).unwrap();

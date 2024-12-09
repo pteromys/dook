@@ -35,14 +35,14 @@ merde::derive! {
 impl LanguageName {
     pub fn get_language(self) -> tree_sitter::Language {
         match self {
-            LanguageName::Rust => tree_sitter_rust::language(),
-            LanguageName::Python => tree_sitter_python::language(),
-            LanguageName::Js => tree_sitter_javascript::language(),
-            LanguageName::Ts => tree_sitter_typescript::language_typescript(),
-            LanguageName::Tsx => tree_sitter_typescript::language_tsx(),
-            LanguageName::C => tree_sitter_c::language(),
-            LanguageName::CPlusPlus => tree_sitter_cpp::language(),
-            LanguageName::Go => tree_sitter_go::language(),
+            LanguageName::Rust => tree_sitter_rust::LANGUAGE.into(),
+            LanguageName::Python => tree_sitter_python::LANGUAGE.into(),
+            LanguageName::Js => tree_sitter_javascript::LANGUAGE.into(),
+            LanguageName::Ts => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+            LanguageName::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
+            LanguageName::C => tree_sitter_c::LANGUAGE.into(),
+            LanguageName::CPlusPlus => tree_sitter_cpp::LANGUAGE.into(),
+            LanguageName::Go => tree_sitter_go::LANGUAGE.into(),
         }
     }
 }
@@ -203,7 +203,7 @@ impl Config {
             .map(|v| v.iter().map(String::from).collect())
             .unwrap_or_default();
         Some(LanguageInfo::new(
-            language,
+            &language,
             match_patterns,
             &language_config.sibling_patterns,
             &language_config.parent_patterns,
@@ -215,9 +215,9 @@ impl Config {
 
 pub struct LanguageInfo {
     pub match_patterns: std::vec::Vec<tree_sitter::Query>,
-    pub sibling_patterns: std::vec::Vec<u16>,
-    pub parent_patterns: std::vec::Vec<u16>,
-    pub parent_exclusions: std::vec::Vec<u16>,
+    pub sibling_patterns: std::vec::Vec<std::num::NonZero<u16>>,
+    pub parent_patterns: std::vec::Vec<std::num::NonZero<u16>>,
+    pub parent_exclusions: std::vec::Vec<std::num::NonZero<u16>>,
     pub recurse_patterns: std::vec::Vec<tree_sitter::Query>,
 }
 
@@ -234,7 +234,7 @@ impl LanguageInfo {
         I4: IntoIterator<Item = Item4>,
         I5: IntoIterator<Item = Item5>,
     >(
-        language: tree_sitter::Language,
+        language: &tree_sitter::Language,
         match_patterns: I1,
         sibling_patterns: I2,
         parent_patterns: I3,
@@ -242,7 +242,7 @@ impl LanguageInfo {
         recurse_patterns: I5,
     ) -> Result<Self, tree_sitter::QueryError> {
         fn compile_queries<Item: AsRef<str>, II: IntoIterator<Item = Item>>(
-            language: tree_sitter::Language,
+            language: &tree_sitter::Language,
             sources: II,
         ) -> Result<std::vec::Vec<tree_sitter::Query>, tree_sitter::QueryError> {
             sources
@@ -251,29 +251,31 @@ impl LanguageInfo {
                 .collect()
         }
         fn resolve_node_types<Item: AsRef<str>, II: IntoIterator<Item = Item>>(
-            language: tree_sitter::Language,
+            language: &tree_sitter::Language,
             node_type_names: II,
-        ) -> Result<std::vec::Vec<u16>, tree_sitter::QueryError> {
+        ) -> Result<std::vec::Vec<std::num::NonZero<u16>>, tree_sitter::QueryError> {
             node_type_names
                 .into_iter()
                 .map(|node_type_name| {
-                    match language.id_for_node_kind(node_type_name.as_ref(), true) {
-                        0 => Err(tree_sitter::QueryError {
+                    match std::num::NonZero::new(
+                        language.id_for_node_kind(node_type_name.as_ref(), true),
+                    ) {
+                        None => Err(tree_sitter::QueryError {
                             row: 0,
                             column: 0,
                             offset: 0,
                             message: format!("unknown node type: {:?}", node_type_name.as_ref()),
                             kind: tree_sitter::QueryErrorKind::NodeType,
                         }),
-                        n => Ok(n),
+                        Some(n) => Ok(n),
                     }
                 })
                 .collect()
         }
         fn resolve_field_names<Item: AsRef<str>, II: IntoIterator<Item = Item>>(
-            language: tree_sitter::Language,
+            language: &tree_sitter::Language,
             field_names: II,
-        ) -> Result<std::vec::Vec<u16>, tree_sitter::QueryError> {
+        ) -> Result<std::vec::Vec<std::num::NonZero<u16>>, tree_sitter::QueryError> {
             field_names
                 .into_iter()
                 .map(|field_name| {

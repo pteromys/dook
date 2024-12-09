@@ -1,5 +1,5 @@
 /// dump the structure of a `tree_sitter::Tree` to standard output.
-pub fn dump_tree<'tree, T: tree_sitter::TextProvider<'tree>>(
+pub fn dump_tree<I: AsRef<[u8]>, T: tree_sitter::TextProvider<I>>(
     tree: &tree_sitter::Tree,
     mut text_provider: T,
     use_color: bool,
@@ -37,13 +37,11 @@ pub fn dump_tree<'tree, T: tree_sitter::TextProvider<'tree>>(
                 color_end
             );
         } else {
-            let node_content = String::from_utf8(
-                text_provider
-                    .text(node)
-                    .collect::<std::vec::Vec<&[u8]>>()
-                    .concat(),
-            )
-            .unwrap();
+            let node_content = text_provider
+                .text(node)
+                .map(|t| String::from(std::str::from_utf8(t.as_ref()).unwrap()))
+                .collect::<Vec<_>>()
+                .concat();
             if node.is_named() {
                 println!(
                     "{}({}{}{} = {}{:?}{}){}",
