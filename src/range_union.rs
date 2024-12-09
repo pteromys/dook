@@ -51,7 +51,7 @@ pub struct RangeUnionIterator<'it> {
     fill_gaps: usize,
 }
 
-impl<'it> Iterator for RangeUnionIterator<'it> {
+impl Iterator for RangeUnionIterator<'_> {
     type Item = std::ops::Range<usize>;
     fn next(&mut self) -> Option<Self::Item> {
         match self.current_interval {
