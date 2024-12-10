@@ -258,6 +258,7 @@
         "[",
         "  (preproc_def name: (_) @name)",
         "  (preproc_function_def name: (_) @name)",
+        "  (preproc_call directive: (preproc_directive) @undef (#match? @undef \"#\\\\s*undef\") argument: (_) @name)",
         "  (struct_specifier name: (_) @name body: (_))",
         "  (type_definition type: (struct_specifier name: (_) @name body: (_)))",
         "  (type_definition \"typedef\" type: (_) (type_identifier) @name)",

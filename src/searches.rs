@@ -259,4 +259,31 @@ mod tests {
             &cases,
         );
     }
+
+    #[test]
+    fn c_examples() {
+        // these ranges are 0-indexed and bat line numbers are 1-indexed so generate them with `nl -ba -v0`
+        #[rustfmt::skip]
+        let cases = [
+            ("ONE", vec![2..4], vec![]),  // #define, which I guess includes the line ending.
+            ("two", vec![5..6], vec![]),  // static const
+            ("ThreeStruct", vec![7..11], vec![]),  // struct
+            ("Three", vec![7..11], vec![]),  // typedef struct; see https://stackoverflow.com/a/1675446
+            ("THREE_PTR", vec![12..13], vec![]),  // typedef of pointer to struct
+            ("Pint", vec![14..15], vec![]),  // typedef pointer to other stuff
+            ("Quart", vec![16..20], vec![]),  // struct not in a typedef
+            ("four", vec![7..9], vec![]),  // member
+            ("five", vec![7..8, 9..10], vec![]),  // array
+            ("six", vec![21..22], vec![]),  // unreasonable levels of pointer nesting
+            ("SEVEN", vec![23..25, 33..35], vec![]),  // macro
+            ("second_order", vec![25..32], vec![]),  // function definition
+            ("callback", vec![25..30], vec![]),  // function pointer
+            ("right", vec![25..30], vec![]),  // other function parameter
+        ];
+        verify_examples(
+            config::LanguageName::C,
+            include_bytes!("../test_cases/c.c"),
+            &cases,
+        );
+    }
 }
