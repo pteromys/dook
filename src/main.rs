@@ -71,10 +71,7 @@ fn main() -> std::io::Result<std::process::ExitCode> {
 
     // check for dump-parse mode
     if let Some(dump_target) = cli.dump {
-        let file_info = match searches::ParsedFile::from_filename(&dump_target) {
-            None => return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "")),
-            Some(f) => f,
-        };
+        let file_info = searches::ParsedFile::from_filename(&dump_target)?;
         dumptree::dump_tree(
             &file_info.tree,
             file_info.source_code.as_slice(),
@@ -148,8 +145,8 @@ fn main() -> std::io::Result<std::process::ExitCode> {
         let local_pattern = local_patterns.last().unwrap();
         for path in filenames {
             let file_info = match searches::ParsedFile::from_filename(&path) {
-                None => continue,
-                Some(f) => f,
+                Err(_) => continue, // TODO eprintln! every error that isn't a failure to parse
+                Ok(f) => f,
             };
             let language_info = custom_config
                 .as_ref()

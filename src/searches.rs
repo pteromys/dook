@@ -7,14 +7,15 @@ pub struct ParsedFile {
 }
 
 impl ParsedFile {
-    pub fn from_filename(path: &std::ffi::OsString) -> Option<ParsedFile> {
+    pub fn from_filename(path: &std::ffi::OsString) -> Result<ParsedFile, std::io::Error> {
         // TODO 0: add more languages
         // TODO 1: support embeds
         // TODO 2: group by language and do a second pass with language-specific regexes?
         // strings from https://github.com/monkslc/hyperpolyglot/blob/master/languages.yml
-        let language_name = match hyperpolyglot::detect(std::path::Path::new(path))
-            .unwrap()
-            .unwrap()
+        let language_name = match hyperpolyglot::detect(std::path::Path::new(path))?
+            .ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::Unsupported, format!("{:?}", path))
+            })?
             .language()
         {
             "Rust" => config::LanguageName::Rust,
@@ -25,20 +26,29 @@ impl ParsedFile {
             "C" => config::LanguageName::C,
             "C++" => config::LanguageName::CPlusPlus,
             "Go" => config::LanguageName::Go,
-            _ => return None,
+            other_language => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    other_language,
+                ))
+            }
         };
-        let source_code = std::fs::read(path).unwrap(); // TODO transmit error
+        let source_code = std::fs::read(path)?;
         Self::from_bytes(source_code, language_name)
     }
 
     pub fn from_bytes(
         source_code: Vec<u8>,
         language_name: config::LanguageName,
-    ) -> Option<ParsedFile> {
+    ) -> Result<ParsedFile, std::io::Error> {
         let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&language_name.get_language()).unwrap();
-        let tree = parser.parse(&source_code, None).unwrap();
-        Some(ParsedFile {
+        parser
+            .set_language(&language_name.get_language())
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let tree = parser
+            .parse(&source_code, None)
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::TimedOut, ""))?;
+        Ok(ParsedFile {
             language_name,
             source_code,
             tree,
