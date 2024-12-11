@@ -27,3 +27,5 @@ class five {
 
 	get seven() { return this.six + 1; }
 }
+
+const arr = (eight, nine = 2, ...ten) => null;

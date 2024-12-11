@@ -252,10 +252,29 @@ mod tests {
             ("five", vec![24..29], vec![]),  // new-style class
             ("six", vec![24..26], vec![]),  // class member variable
             ("seven", vec![24..25, 27..28], vec![]),  // getter
+            ("eight", vec![30..31], vec![]),  // function argument
+            ("nine", vec![30..31], vec![]),  // function argument with default
+            ("ten", vec![30..31], vec![]),  // rest parameters
         ];
         verify_examples(
             config::LanguageName::Js,
             include_bytes!("../test_cases/javascript.js"),
+            &cases,
+        );
+    }
+
+    #[test]
+    fn tsx_examples() {
+        // these ranges are 0-indexed and bat line numbers are 1-indexed so generate them with `nl -ba -v0`
+        #[rustfmt::skip]
+        let cases = [
+            ("eight", vec![0..1], vec![]),  // function argument
+            ("nine", vec![0..1], vec![]),  // function argument with default
+            ("ten", vec![0..1], vec![]),  // rest parameters
+        ];
+        verify_examples(
+            config::LanguageName::Tsx,
+            include_bytes!("../test_cases/typescript.tsx"),
             &cases,
         );
     }
