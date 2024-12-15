@@ -289,7 +289,7 @@ dependencies = [
 
 [[package]]
 name = "dook"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "clap 4.5.18",
  "console",

@@ -10,7 +10,7 @@ Find code definitions using [tree-sitter](https://tree-sitter.github.io/) and [r
 Install [ripgrep](https://github.com/BurntSushi/ripgrep) and [bat](https://github.com/sharkdp/bat). Build and install with:
 
 ```sh
-cargo install --git https://github.com/pteromys/dook
+cargo install dook
 ```
 
 ## Example usage
@@ -65,13 +65,14 @@ Also attempts to find assignments, class definitions, etc—because why should y
 - Balance responsiveness and thoroughness: explicitly, return results before the user thinks of a follow-up query.
 - Sacrifice consistency and machine readability if necessary to improve chances of showing relevant context. (If you want machine-predictable output, use `cq` instead.)
 - Sacrifice disk and RAM footprint for accuracy and my own development time—tree-sitter parsers are maybe 2 megs each on disk, and the codebase you're searching is probably larger. But do try to keep RAM usage an order of magnitude or so smaller than the IDE you're probably procrastinating opening.
+- Be open to similar use cases (like find all mutations of a variable or something), but don't let that block getting good at finding definitions.
 
 ## Possible future work
 
 - more languages (and tests in more languages 😱)
 - show all calls to a function instead (`git grep -W` already gets mostly there so I care less)
 - end this project and make it instead a feature of ripgrep (may not be viable because the parsers for all the languages add up to a pretty large binary size; then again maybe [rubicon](https://crates.io/crates/rubicon) offers some hope)
-- Upgrade tree-sitter version so I can make better patterns. The current C and C++ query patterns make me want to scream.
+- make better patterns (particularly for C and C++) now that I'm on tree-sitter 0.23
 
 ## License
 

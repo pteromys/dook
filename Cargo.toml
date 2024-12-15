@@ -1,6 +1,6 @@
 [package]
 name = "dook"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.83"
 authors = ["pteromys <pteromys@gmail.com>"]
@@ -11,7 +11,7 @@ repository = "https://github.com/pteromys/dook"
 readme = "README.md"
 keywords = ["search", "grep", "tree-sitter", "code-search"]
 categories = ["command-line-utilities", "development-tools"]
-include = ["/src", "/test_cases", "/README.md", "/LICENSE", "/dook.svg"]
+include = ["/src", "/test_cases", "/README.md", "/LICENSE", "/dook.svg", "!.ruff_cache"]
 
 [dependencies]
 clap = { version = "4.5.4", features = ["derive", "unicode", "wrap_help"] }
