@@ -5,8 +5,12 @@
 //     https://dandavison.github.io/delta/grep.html
 //     https://docs.github.com/en/repositories/working-with-files/using-files/navigating-code-on-github#precise-and-search-based-navigation
 
+use etcetera::AppStrategy;
+
 mod config;
 mod dumptree;
+mod language_name;
+mod loader;
 mod paging;
 mod range_union;
 mod searches;
@@ -69,9 +73,30 @@ fn main() -> std::io::Result<std::process::ExitCode> {
         EnablementLevel::Never
     };
 
+    // load config
+    let custom_config = config::Config::load(cli.config)?;
+    let default_config = config::Config::load_default();
+    let merged_config = match custom_config {
+        None => default_config,
+        Some(custom_config) => default_config.merge(custom_config),
+    };
+
+    let mut language_loader = match config::dirs() {
+        Err(_) => loader::Loader::new(
+            std::path::PathBuf::new(),
+            Some(std::path::PathBuf::new()),
+            true,
+        ),
+        Ok(d) => loader::Loader::new(d.cache_dir().join("sources"), None, false),
+    };
+
     // check for dump-parse mode
     if let Some(dump_target) = cli.dump {
-        let file_info = searches::ParsedFile::from_filename(&dump_target)?;
+        let file_info = searches::ParsedFile::from_filename(
+            &dump_target,
+            &mut language_loader,
+            &merged_config,
+        )?;
         dumptree::dump_tree(
             &file_info.tree,
             file_info.source_code.as_slice(),
@@ -89,10 +114,6 @@ fn main() -> std::io::Result<std::process::ExitCode> {
         }
     };
     let mut local_patterns: std::vec::Vec<regex::Regex> = vec![];
-
-    // load config
-    let custom_config = config::Config::load(cli.config)?;
-    let default_config = config::Config::load_default();
 
     // store the result here
     let mut print_ranges: Vec<(std::ffi::OsString, range_union::RangeUnion)> = Vec::new();
@@ -144,14 +165,16 @@ fn main() -> std::io::Result<std::process::ExitCode> {
         );
         let local_pattern = local_patterns.last().unwrap();
         for path in filenames {
-            let file_info = match searches::ParsedFile::from_filename(&path) {
+            let file_info = match searches::ParsedFile::from_filename(
+                &path,
+                &mut language_loader,
+                &merged_config,
+            ) {
                 Err(_) => continue, // TODO eprintln! every error that isn't a failure to parse
                 Ok(f) => f,
             };
-            let language_info = custom_config
-                .as_ref()
-                .and_then(|c| c.get_language_info(file_info.language_name))
-                .or_else(|| default_config.get_language_info(file_info.language_name))
+            let language_info = merged_config
+                .get_language_info(file_info.language_name, &mut language_loader)
                 .ok_or_else(|| {
                     std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,

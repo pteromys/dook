@@ -3,51 +3,20 @@
 //         likely to require regrouping
 //     tree_sitter 0.22 will support alternation of node types, allowing better concision
 //     tree_sitter 0.22 will support context_cursor.set_max_start_depth(0)
+use crate::language_name::LanguageName;
+use crate::loader;
 
 const DEFAULT_CONFIG: &str = include_str!("dook.json");
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, strum::EnumIter)]
-pub enum LanguageName {
-    Rust,
-    Python,
-    Js,
-    Ts,
-    Tsx,
-    C,
-    CPlusPlus,
-    Go,
+pub fn dirs() -> Result<impl etcetera::AppStrategy, etcetera::HomeDirError> {
+    etcetera::choose_app_strategy(etcetera::AppStrategyArgs {
+        top_level_domain: "com".to_string(),
+        author: "melonisland".to_string(),
+        app_name: "dook".to_string(),
+    })
 }
 
-merde::derive! {
-    impl (Serialize, Deserialize) for enum LanguageName
-    string_like {
-        "rust" => Rust,
-        "python" => Python,
-        "js" => Js,
-        "ts" => Ts,
-        "tsx" => Tsx,
-        "c" => C,
-        "cplusplus" => CPlusPlus,
-        "go" => Go,
-    }
-}
-
-impl LanguageName {
-    pub fn get_language(self) -> tree_sitter::Language {
-        match self {
-            LanguageName::Rust => tree_sitter_rust::LANGUAGE.into(),
-            LanguageName::Python => tree_sitter_python::LANGUAGE.into(),
-            LanguageName::Js => tree_sitter_javascript::LANGUAGE.into(),
-            LanguageName::Ts => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
-            LanguageName::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
-            LanguageName::C => tree_sitter_c::LANGUAGE.into(),
-            LanguageName::CPlusPlus => tree_sitter_cpp::LANGUAGE.into(),
-            LanguageName::Go => tree_sitter_go::LANGUAGE.into(),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 enum MultiLineString {
     One(String),
     Many(std::vec::Vec<String>),
@@ -122,6 +91,7 @@ impl From<&MultiLineString> for String {
 
 #[derive(Debug, PartialEq)]
 struct LanguageConfig {
+    parser: Option<loader::ParserSource>,
     match_patterns: std::vec::Vec<MultiLineString>,
     sibling_patterns: std::vec::Vec<String>,
     parent_patterns: std::vec::Vec<String>,
@@ -131,7 +101,7 @@ struct LanguageConfig {
 }
 
 merde::derive! {
-    impl (Deserialize) for struct LanguageConfig { match_patterns, sibling_patterns, parent_patterns, parent_exclusions, recurse_patterns, comments }
+    impl (Deserialize) for struct LanguageConfig { parser, match_patterns, sibling_patterns, parent_patterns, parent_exclusions, recurse_patterns, comments }
 }
 
 #[derive(Debug, PartialEq)]
@@ -187,15 +157,16 @@ pub use ConfigV2 as Config;
 
 impl Config {
     pub fn load(explicit_path: Option<std::ffi::OsString>) -> std::io::Result<Option<Self>> {
+        use etcetera::AppStrategy;
         use merde::IntoStatic;
         let file_contents = match explicit_path {
             // explicitly requested file paths expose any errors reading
             Some(p) => std::fs::read(std::path::PathBuf::from(p))?,
             // the default file path is more forgiving...
-            None => match directories::ProjectDirs::from("com", "melonisland", "dook") {
+            None => match dirs() {
                 // if we have no idea how to find it, just give up
-                None => return Ok(None),
-                Some(d) => {
+                Err(_) => return Ok(None),
+                Ok(d) => {
                     let default_path = d.config_dir().join("dook.json");
                     match std::fs::read(&default_path) {
                         // unwrap the contents if we successfully read it
@@ -245,12 +216,51 @@ impl Config {
         Self::load_from_str(&DEFAULT_CONFIG.to_ascii_lowercase()).unwrap()
     }
 
+    pub fn merge(mut self, overrides: Self) -> Self {
+        for (language_name, language_config) in overrides.languages {
+            match self.languages.entry(language_name) {
+                std::collections::hash_map::Entry::Vacant(e) => e.insert(language_config),
+                std::collections::hash_map::Entry::Occupied(mut e) => {
+                    let dest_config = e.get_mut();
+                    if let Some(parser) = language_config.parser {
+                        dest_config.parser = Some(parser.clone());
+                    }
+                    if !language_config.match_patterns.is_empty() {
+                        dest_config.match_patterns = language_config.match_patterns.clone();
+                    }
+                    if !language_config.sibling_patterns.is_empty() {
+                        dest_config.sibling_patterns = language_config.sibling_patterns.clone();
+                    }
+                    if !language_config.parent_patterns.is_empty() {
+                        dest_config.parent_patterns = language_config.parent_patterns.clone();
+                    }
+                    if !language_config.parent_exclusions.is_empty() {
+                        dest_config.parent_exclusions = language_config.parent_exclusions.clone();
+                    }
+                    if let Some(recurse_patterns) = language_config.recurse_patterns {
+                        dest_config.recurse_patterns = Some(recurse_patterns.clone());
+                    }
+                    dest_config
+                }
+            };
+        }
+        self
+    }
+
+    pub fn get_parser_source(&self, language_name: LanguageName) -> Option<&loader::ParserSource> {
+        self.languages.get(&language_name)?.parser.as_ref()
+    }
+
     pub fn get_language_info(
         &self,
         language_name: LanguageName,
+        loader: &mut loader::Loader,
     ) -> Option<Result<LanguageInfo, tree_sitter::QueryError>> {
         let language_config = self.languages.get(&language_name)?;
-        let language = language_name.get_language();
+        let language = loader
+            .get_language(language_config.parser.as_ref().unwrap())
+            .unwrap()
+            .unwrap();
         let match_patterns: std::vec::Vec<String> = language_config
             .match_patterns
             .iter()
@@ -357,19 +367,5 @@ impl LanguageInfo {
             parent_exclusions: resolve_field_names(language, parent_exclusions)?,
             recurse_patterns: compile_queries(language, recurse_patterns)?,
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn default_patterns_are_loadable() {
-        use strum::IntoEnumIterator;
-        let default_config = Config::load_default();
-        for language_name in LanguageName::iter() {
-            default_config.get_language_info(language_name);
-        }
     }
 }

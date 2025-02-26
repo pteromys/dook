@@ -11,27 +11,27 @@ repository = "https://github.com/pteromys/dook"
 readme = "README.md"
 keywords = ["search", "grep", "tree-sitter", "code-search"]
 categories = ["command-line-utilities", "development-tools"]
-include = ["/src", "/test_cases", "/README.md", "/LICENSE", "/dook.svg", "!.ruff_cache"]
+include = ["/src", "/tests", "/test_cases", "/README.md", "/LICENSE", "/dook.svg", "!.ruff_cache"]
 
 [dependencies]
+anyhow = "1"
+base16ct = "0.2.0"
 clap = { version = "4.5.4", features = ["derive", "unicode", "wrap_help"] }
 console = "0.15"
-directories = "5.0.1"
+digest = "0.10.0"
+etcetera = "0.8.0"
 env_logger = "0.11.3"
 hyperpolyglot = "0.1.7"
+libloading = "0.8.6"
 log = "0.4.21"
 merde = { version = "10.0.0", features = ["core", "deserialize", "json"] }
 os_str_bytes = "7.0"
-regex = "1.10"  # match ripgrep's default engine since we shell out to ripgrep
+regex = "1.11"  # match ripgrep's default engine since we shell out to ripgrep
+sha2 = "0.10.8"
 strum = { version = "0.26", features = ["derive"] }
-tree-sitter = "0.23"
-tree-sitter-c = "0.23"
-tree-sitter-cpp = "0.23"
-tree-sitter-go = "0.23"
-tree-sitter-javascript = "0.23"
-tree-sitter-python = "0.23"
-tree-sitter-rust = "0.23"
-tree-sitter-typescript = "0.23"
+tempfile = "3"
+tree-sitter = "^0.25"
+tree-sitter-loader = "^0.25"
 
 [[bin]]
 path = "src/main.rs"
