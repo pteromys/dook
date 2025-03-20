@@ -178,7 +178,7 @@ fn main() -> std::io::Result<std::process::ExitCode> {
         // infer syntax, then search with tree_sitter
         let mut recurse_defs: std::vec::Vec<String> = vec![];
         local_patterns.push(
-            match regex::Regex::new(&(String::from("^") + current_pattern.as_str() + "$")) {
+            match regex::Regex::new(&(String::from("^(") + current_pattern.as_str() + ")$")) {
                 Ok(p) => p,
                 Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, e)),
             },

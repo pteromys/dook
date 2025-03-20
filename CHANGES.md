@@ -10,6 +10,8 @@ changelog 🧚
   - Add integer "version" field.
   - Move per-language config to live under "languages".
 - Support more `bat` options (`--wrap` and `-S`).
+- Fixes:
+  - Search patterns with `|` no longer fail to restrict to whole-name match.
 
 ## 0.2.0 (2024-12-14)
 
