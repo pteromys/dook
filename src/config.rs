@@ -136,7 +136,7 @@ impl<'de> merde::Deserialize<'de> for ConfigFormat {
             match de.next().await? {
                 merde::Event::Str(key) => {
                     if key == "version" {
-                        return match de.next().await?.into_u64()? {
+                        return match de.next().await?.into_i64()? {
                             2 => Ok(ConfigFormat::V2),
                             _ => Err(merde::MerdeError::OutOfRange),
                         };
@@ -367,5 +367,38 @@ impl LanguageInfo {
             parent_exclusions: resolve_field_names(language, parent_exclusions)?,
             recurse_patterns: compile_queries(language, recurse_patterns)?,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn v1_vs_v2() {
+        let v1 = Config::load_from_str(
+            r#"{"python": {
+            "match_patterns": [],
+            "sibling_patterns": [],
+            "parent_patterns": [],
+            "parent_exclusions": []
+        }}"#,
+        )
+        .unwrap();
+        let v2 = Config::load_from_str(
+            r#"{
+            "version": 2,
+            "languages": {
+                "python": {
+                    "match_patterns": [],
+                    "sibling_patterns": [],
+                    "parent_patterns": [],
+                    "parent_exclusions": []
+                }
+            }
+        }"#,
+        )
+        .unwrap();
+        assert_eq!(v1, v2);
     }
 }

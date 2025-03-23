@@ -11,6 +11,9 @@ fn default_patterns_are_loadable() {
         loader::Loader::new(target_dir.clone(), Some(target_dir.clone()), false);
     let default_config = Config::load_default();
     for language_name in LanguageName::iter() {
-        default_config.get_language_info(language_name, &mut language_loader).unwrap().unwrap();
+        default_config
+            .get_language_info(language_name, &mut language_loader)
+            .unwrap()
+            .unwrap();
     }
 }

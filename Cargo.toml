@@ -36,3 +36,8 @@ tree-sitter-loader = "^0.25"
 [[bin]]
 path = "src/main.rs"
 name = "dook"
+
+[lib]
+# src/lib.rs only exists for integration tests to link against;
+# don't rerun the unit tests on it since they'll all run for src/main.rs anyway.
+test = false

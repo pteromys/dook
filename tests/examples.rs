@@ -1,13 +1,16 @@
+#![allow(
+    clippy::single_range_in_vec_init,
+    reason = "They're all declared as Vec<Range>"
+)]
+
 use dook::config::Config;
 use dook::language_name::LanguageName;
 use dook::loader;
 use dook::searches;
 
-fn verify_examples(
-    language_name: LanguageName,
-    source: &[u8],
-    cases: &[(&str, Vec<std::ops::Range<usize>>, Vec<&str>)],
-) {
+type TestCase<'a> = (&'a str, Vec<std::ops::Range<usize>>, Vec<&'a str>);
+
+fn verify_examples(language_name: LanguageName, source: &[u8], cases: &[TestCase]) {
     let config = Config::load_default();
     let target_dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
     let mut language_loader =
