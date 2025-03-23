@@ -9,6 +9,7 @@ changelog 🧚
 - Config file format version 2:
   - Add integer "version" field.
   - Move per-language config to live under "languages".
+- Support more `bat` options (`--wrap` and `-S`).
 
 ## 0.2.0 (2024-12-14)
 

@@ -3,20 +3,23 @@ pub struct MaybePager {
 }
 
 impl MaybePager {
-    pub fn new(enable_paging: bool) -> Self {
+    pub fn new(enable_paging: bool, chop: bool) -> Self {
         let pager = if enable_paging {
             let mut pager_program = std::process::Command::new(match std::env::var_os("PAGER") {
                 Some(value) => value,
                 None => std::ffi::OsString::from("less"),
             });
-            match (if pager_program.get_program() == "less" {
+            let pager_command = if pager_program.get_program() == "less" {
                 pager_program.arg("-RF")
             } else {
                 &mut pager_program
-            })
-            .stdin(std::process::Stdio::piped())
-            .spawn()
-            {
+            };
+            let pager_command = if chop && pager_command.get_program() == "less" {
+                pager_command.arg("-S")
+            } else {
+                &mut pager_program
+            };
+            match pager_command.stdin(std::process::Stdio::piped()).spawn() {
                 Ok(child) => Some(child),
                 Err(e) => {
                     println!("Pager didn't start: {}", e);

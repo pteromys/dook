@@ -23,6 +23,14 @@ enum EnablementLevel {
     Always,
 }
 
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum)]
+enum WrapMode {
+    #[default]
+    Auto,
+    Never,
+    Character,
+}
+
 #[derive(clap::Parser, Debug)]
 /// dook: Definition lookup in your code.
 struct Cli {
@@ -38,6 +46,18 @@ struct Cli {
 
     #[arg(long, value_enum, default_value_t)]
     paging: EnablementLevel,
+
+    #[arg(
+        long,
+        value_enum,
+        default_value_t,
+        default_value_if("_chop_long_lines", clap::builder::ArgPredicate::IsPresent, "never")
+    )]
+    wrap: WrapMode,
+
+    /// Alias for --wrap=never.
+    #[arg(short = 'S', long)]
+    _chop_long_lines: bool,
 
     /// Apply no styling; specify twice to also disable paging.
     #[arg(short, long, action = clap::ArgAction::Count)]
@@ -217,12 +237,13 @@ fn main() -> std::io::Result<std::process::ExitCode> {
     } else {
         cli.plain < 2 && console::Term::stdout().is_term()
     };
-    let mut pager = paging::MaybePager::new(enable_paging);
+    let mut pager = paging::MaybePager::new(enable_paging, cli.wrap == WrapMode::Never);
     let bat_size = console::Term::stdout().size_checked();
     for (path, ranges) in print_ranges.iter() {
         let mut cmd = std::process::Command::new("bat");
         let cmd = cmd
             .arg("--paging=never")
+            .arg(format!("--wrap={:?}", cli.wrap).to_lowercase())
             .arg(format!("--color={:?}", use_color).to_lowercase());
         let cmd = match bat_size {
             Some((_rows, cols)) => cmd.arg(format!("--terminal-width={}", cols)),
