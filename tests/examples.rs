@@ -100,6 +100,10 @@ fn js() {
         ("eight", vec![30..31], vec![]),  // function argument
         ("nine", vec![30..31], vec![]),  // function argument with default
         ("ten", vec![30..31], vec![]),  // rest parameters
+        ("eleven", vec![32..33], vec![]),  // array destructuring
+        ("twelve", vec![32..33], vec![]),  // array destructuring
+        ("thirteen", vec![33..34], vec![]),  // object destructuring
+        ("fourteen", vec![34..35], vec![]),  // shorthand object destructuring
     ];
     verify_examples(
         LanguageName::Js,

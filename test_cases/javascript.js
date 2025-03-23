@@ -29,3 +29,7 @@ class five {
 }
 
 const arr = (eight, nine = 2, ...ten) => null;
+
+const [eleven, twelve] = [11, 12];
+const {x: thirteen} = {x: 13};
+const {fourteen} = {["fourt" + "een"]: 14};
