@@ -6,7 +6,7 @@
 use crate::language_name::LanguageName;
 use crate::loader;
 
-const DEFAULT_CONFIG: &str = include_str!("dook.json");
+const DEFAULT_CONFIG: &str = include_str!("dook.yml");
 
 pub fn dirs() -> Result<impl etcetera::AppStrategy, etcetera::HomeDirError> {
     etcetera::choose_app_strategy(etcetera::AppStrategyArgs {
@@ -17,32 +17,19 @@ pub fn dirs() -> Result<impl etcetera::AppStrategy, etcetera::HomeDirError> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum MultiLineString {
-    One(String),
-    Many(std::vec::Vec<String>),
+struct MultiLineString(String);
+
+impl AsRef<str> for MultiLineString {
+    fn as_ref(&self) -> &str {
+        let Self(inner) = self;
+        inner
+    }
 }
 
-impl merde::Serialize for MultiLineString {
-    async fn serialize<'se>(
-        &'se self,
-        s: &'se mut dyn merde::DynSerializer,
-    ) -> Result<(), merde::MerdeError<'static>> {
-        match self {
-            MultiLineString::One(v) => {
-                s.write(merde::Event::Str(merde::CowStr::copy_from_str(v)))
-                    .await
-            }
-            MultiLineString::Many(vs) => {
-                s.write(merde::Event::ArrayStart(merde::ArrayStart {
-                    size_hint: Some(vs.len()),
-                }))
-                .await?;
-                for v in vs {
-                    v.serialize(s).await?;
-                }
-                s.write(merde::Event::ArrayEnd).await
-            }
-        }
+impl From<&MultiLineString> for String {
+    fn from(mls: &MultiLineString) -> Self {
+        let MultiLineString(inner) = mls;
+        inner.clone()
     }
 }
 
@@ -51,13 +38,13 @@ impl<'de> merde::Deserialize<'de> for MultiLineString {
         de: &mut dyn merde::DynDeserializer<'de>,
     ) -> Result<Self, merde::MerdeError<'de>> {
         match de.next().await? {
-            merde::Event::Str(v) => Ok(MultiLineString::One(v.repeat(1))), // there's probably a better way to clone CowStr to String
+            merde::Event::Str(v) => Ok(MultiLineString(String::from(v))),
             merde::Event::ArrayStart(_) => {
                 let mut vs: Vec<String> = Vec::new();
                 loop {
                     match de.next().await? {
                         merde::Event::ArrayEnd => break,
-                        merde::Event::Str(v) => vs.push(v.repeat(1)),
+                        merde::Event::Str(v) => vs.push(String::from(v)),
                         ev => Err(merde::MerdeError::UnexpectedEvent {
                             got: merde::EventType::from(&ev),
                             expected: &[merde::EventType::Str],
@@ -67,7 +54,7 @@ impl<'de> merde::Deserialize<'de> for MultiLineString {
                         })?,
                     }
                 }
-                Ok(MultiLineString::Many(vs))
+                Ok(MultiLineString(vs.join("\n")))
             }
             ev => Err(merde::MerdeError::UnexpectedEvent {
                 got: merde::EventType::from(&ev),
@@ -76,15 +63,6 @@ impl<'de> merde::Deserialize<'de> for MultiLineString {
                     "multiline string must be a string or an array of strings",
                 )),
             })?,
-        }
-    }
-}
-
-impl From<&MultiLineString> for String {
-    fn from(mls: &MultiLineString) -> Self {
-        match mls {
-            MultiLineString::One(s) => s.clone(),
-            MultiLineString::Many(v) => v.join("\n"),
         }
     }
 }
@@ -117,8 +95,41 @@ pub struct ConfigV2 {
     languages: std::collections::HashMap<LanguageName, LanguageConfig>,
 }
 
-merde::derive! {
-    impl (Deserialize) for struct ConfigV2 { version, languages }
+merde::impl_into_static!(struct ConfigV2 { version, languages });
+
+impl<'de> merde::Deserialize<'de> for ConfigV2 {
+    async fn deserialize(
+        de: &mut dyn merde::DynDeserializer<'de>,
+    ) -> Result<Self, merde::MerdeError<'de>> {
+        use merde::DynDeserializerExt;
+        let mut result = ConfigV2 {
+            version: 2,
+            languages: std::collections::HashMap::new(),
+        };
+        de.next().await?.into_map_start()?;
+        loop {
+            match de.next().await? {
+                merde::Event::Str(key) => {
+                    if key == "_version" {
+                        result.version = u64::try_from(de.next().await?.into_i64()?)
+                            .map_err(|_| merde::MerdeError::OutOfRange)?;
+                    } else {
+                        de.put_back(merde::Event::Str(key))?;
+                        let key: LanguageName = de.t().await?;
+                        result.languages.insert(key, de.t().await?);
+                    }
+                }
+                merde::Event::MapEnd => return Ok(result),
+                e => {
+                    return Err(merde::MerdeError::UnexpectedEvent {
+                        got: merde::EventType::from(&e),
+                        expected: &[merde::EventType::Str],
+                        help: None,
+                    })
+                }
+            }
+        }
+    }
 }
 
 pub enum ConfigFormat {
@@ -135,7 +146,7 @@ impl<'de> merde::Deserialize<'de> for ConfigFormat {
         loop {
             match de.next().await? {
                 merde::Event::Str(key) => {
-                    if key == "version" {
+                    if key == "_version" {
                         return match de.next().await?.into_i64()? {
                             2 => Ok(ConfigFormat::V2),
                             _ => Err(merde::MerdeError::OutOfRange),
@@ -148,7 +159,7 @@ impl<'de> merde::Deserialize<'de> for ConfigFormat {
             }
         }
         Err(merde::MerdeError::MissingProperty(
-            merde::CowStr::copy_from_str("version"),
+            merde::CowStr::copy_from_str("_version"),
         ))
     }
 }
@@ -167,7 +178,7 @@ impl Config {
                 // if we have no idea how to find it, just give up
                 Err(_) => return Ok(None),
                 Ok(d) => {
-                    let default_path = d.config_dir().join("dook.json");
+                    let default_path = d.config_dir().join("dook.yml");
                     match std::fs::read(&default_path) {
                         // unwrap the contents if we successfully read it
                         Ok(contents) => contents,
@@ -198,17 +209,17 @@ impl Config {
 
     fn load_from_str(contents_lowercase: &str) -> Result<Self, merde::MerdeError> {
         // first pass to hunt for the config version
-        let config_format: ConfigFormat = merde::json::from_str(contents_lowercase)?;
+        let config_format: ConfigFormat = merde::yaml::from_str(contents_lowercase)?;
         // second pass depending on version
         match config_format {
             ConfigFormat::V1 => {
-                let ConfigV1(language_configs) = merde::json::from_str(contents_lowercase)?;
+                let ConfigV1(language_configs) = merde::yaml::from_str(contents_lowercase)?;
                 Ok(ConfigV2 {
                     version: 2,
                     languages: language_configs,
                 })
             }
-            ConfigFormat::V2 => merde::json::from_str::<ConfigV2>(contents_lowercase),
+            ConfigFormat::V2 => merde::yaml::from_str::<ConfigV2>(contents_lowercase),
         }
     }
 
@@ -387,14 +398,12 @@ mod tests {
         .unwrap();
         let v2 = Config::load_from_str(
             r#"{
-            "version": 2,
-            "languages": {
-                "python": {
-                    "match_patterns": [],
-                    "sibling_patterns": [],
-                    "parent_patterns": [],
-                    "parent_exclusions": []
-                }
+            "_version": 2,
+            "python": {
+                "match_patterns": [],
+                "sibling_patterns": [],
+                "parent_patterns": [],
+                "parent_exclusions": []
             }
         }"#,
         )

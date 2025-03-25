@@ -7,8 +7,9 @@ changelog 🧚
   - Sources go in ~/.cache/dook/sources.
   - Compiled parsers go in ~/.cache/tree-sitter/lib.
 - Config file format version 2:
-  - Add integer "version" field.
-  - Move per-language config to live under "languages".
+  - Add integer "_version" field.
+  - Switch to yaml since we use a lot of multi-line strings.
+  - Add per-language "parser" field for specifying parser sources.
 - Support more `bat` options (`--wrap` and `-S`).
 - Fixes:
   - Search patterns with `|` no longer fail to restrict to whole-name match.
