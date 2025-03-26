@@ -37,8 +37,13 @@ struct Cli {
     /// Regex to match against symbol names. Required unless using --dump.
     pattern: Option<regex::Regex>,
 
-    /// Config file path
-    #[arg(short, long, required = false)]
+    /// Config file path (default: ~/.config/dook/dook.yml)
+    #[arg(
+        short,
+        long,
+        required = false,
+        help = format!("Config file path (default: {:?})", config::default_config_path())
+    )]
     config: Option<std::ffi::OsString>,
 
     #[arg(long, value_enum, default_value_t)]
@@ -78,8 +83,7 @@ struct Cli {
 
 fn main() -> std::io::Result<std::process::ExitCode> {
     use clap::Parser;
-    use os_str_bytes::OsStrBytes;
-    use std::io::Write;
+    use std::io::{Read, Write};
 
     env_logger::init();
 
@@ -138,42 +142,7 @@ fn main() -> std::io::Result<std::process::ExitCode> {
     // store the result here
     let mut print_ranges: Vec<(std::ffi::OsString, range_union::RangeUnion)> = Vec::new();
     loop {
-        // first-pass search with ripgrep
-        let mut rg = std::process::Command::new("rg");
-        let rg_output = rg
-            .arg("-l")
-            .arg("-0")
-            .arg(current_pattern.as_str())
-            .arg("./")
-            .stderr(std::process::Stdio::inherit())
-            .output()?;
-        if !rg_output.status.success() {
-            if let Some(e) = rg_output.status.code() {
-                return Ok(std::process::ExitCode::from(e as u8)); // truncate to 8 bits
-            }
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("{}", rg_output.status),
-            ));
-        }
-        // TODO is this even actually the right way to convert stdout to OsStr?
-        let filenames: std::io::Result<std::vec::Vec<std::ffi::OsString>> = rg_output
-            .stdout
-            .split(|x| *x == 0)
-            .map(|x| match std::ffi::OsStr::from_io_bytes(x) {
-                None => Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    format!("{:?}", std::vec::Vec::from(x)),
-                )),
-                Some(y) => Ok(y.to_os_string()),
-            })
-            .filter(|f| match f {
-                Ok(f) => !f.is_empty(),
-                _ => true,
-            })
-            .collect();
-        let mut filenames = filenames?;
-        filenames.sort_unstable();
+        let filenames = ripgrep(&current_pattern)?;
 
         // infer syntax, then search with tree_sitter
         let mut recurse_defs: std::vec::Vec<String> = vec![];
@@ -281,4 +250,50 @@ fn main() -> std::io::Result<std::process::ExitCode> {
 
     // yeah yeah whatever
     Ok(std::process::ExitCode::SUCCESS)
+}
+
+fn ripgrep(pattern: &regex::Regex) -> std::io::Result<std::vec::Vec<std::ffi::OsString>> {
+    use os_str_bytes::OsStrBytes;
+
+    // first-pass search with ripgrep
+    let mut rg = std::process::Command::new("rg");
+    let rg_output = rg
+        .arg("-l")
+        .arg("-0")
+        .arg(pattern.as_str())
+        .arg("./")
+        .stderr(std::process::Stdio::inherit())
+        .output()?;
+    if !rg_output.status.success() {
+        if let Some(e) = rg_output.status.code() {
+            return Err(std::io::Error::new( // TODO adopt this exit code as our own
+                std::io::ErrorKind::Other,
+                format!("ripgrep exited {:?}", e),
+            ));
+        }
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("{}", rg_output.status),
+        ));
+    }
+    // TODO is this even actually the right way to convert stdout to OsStr?
+    let filenames: std::io::Result<std::vec::Vec<std::ffi::OsString>> = rg_output
+        .stdout
+        .split(|x| *x == 0)
+        .map(|x| match std::ffi::OsStr::from_io_bytes(x) {
+            None => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("{:?}", std::vec::Vec::from(x)),
+            )),
+            Some(y) => Ok(y.to_os_string()),
+        })
+        .filter(|f| match f {
+            Ok(f) => !f.is_empty(),
+            _ => true,
+        })
+        .collect();
+    filenames.map(|mut f| {
+        f.sort_unstable();
+        f
+    })
 }

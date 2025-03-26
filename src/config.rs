@@ -8,6 +8,11 @@ use crate::loader;
 
 const DEFAULT_CONFIG: &str = include_str!("dook.yml");
 
+pub fn default_config_path() -> Option<std::path::PathBuf> {
+    use etcetera::AppStrategy;
+    dirs().map(|d| d.config_dir().join("dook.yml")).ok()
+}
+
 pub fn dirs() -> Result<impl etcetera::AppStrategy, etcetera::HomeDirError> {
     etcetera::choose_app_strategy(etcetera::AppStrategyArgs {
         top_level_domain: "com".to_string(),
@@ -168,31 +173,26 @@ pub use ConfigV2 as Config;
 
 impl Config {
     pub fn load(explicit_path: Option<std::ffi::OsString>) -> std::io::Result<Option<Self>> {
-        use etcetera::AppStrategy;
         use merde::IntoStatic;
         let file_contents = match explicit_path {
             // explicitly requested file paths expose any errors reading
             Some(p) => std::fs::read(std::path::PathBuf::from(p))?,
-            // the default file path is more forgiving...
-            None => match dirs() {
-                // if we have no idea how to find it, just give up
-                Err(_) => return Ok(None),
-                Ok(d) => {
-                    let default_path = d.config_dir().join("dook.yml");
-                    match std::fs::read(&default_path) {
-                        // unwrap the contents if we successfully read it
-                        Ok(contents) => contents,
-                        Err(e) => match e.kind() {
-                            // silently eat NotFound
-                            std::io::ErrorKind::NotFound => return Ok(None),
-                            // log other errors but don't let them stop us from trying to work in a degraded environment
-                            _ => {
-                                log::warn!("Error reading config at {:?}, falling back to built-in default: {:?}", default_path, e);
-                                return Ok(None);
-                            }
-                        },
-                    }
-                }
+            // the default file path is more forgiving
+            None => match default_config_path() {
+                None => return Ok(None),  // if there's no default path, just return None
+                Some(default_path) => match std::fs::read(&default_path) {
+                    // unwrap the contents if we successfully read it
+                    Ok(contents) => contents,
+                    Err(e) => match e.kind() {
+                        // silently eat NotFound
+                        std::io::ErrorKind::NotFound => return Ok(None),
+                        // log other errors but don't let them stop us from trying to work in a degraded environment
+                        _ => {
+                            log::warn!("Error reading config at {:?}, falling back to built-in default: {:?}", default_path, e);
+                            return Ok(None);
+                        }
+                    },
+                },
             },
         }.to_ascii_lowercase();
         let contents_lowercase = std::str::from_utf8(&file_contents)
