@@ -172,11 +172,13 @@ impl<'de> merde::Deserialize<'de> for ConfigFormat {
 pub use ConfigV2 as Config;
 
 impl Config {
-    pub fn load(explicit_path: Option<std::ffi::OsString>) -> std::io::Result<Option<Self>> {
+    pub fn load(
+        explicit_path: &Option<impl AsRef<std::path::Path>>,
+    ) -> std::io::Result<Option<Self>> {
         use merde::IntoStatic;
         let file_contents = match explicit_path {
             // explicitly requested file paths expose any errors reading
-            Some(p) => std::fs::read(std::path::PathBuf::from(p))?,
+            Some(p) => std::fs::read(p.as_ref())?,
             // the default file path is more forgiving
             None => match default_config_path() {
                 None => return Ok(None),  // if there's no default path, just return None

@@ -13,6 +13,12 @@ Install [ripgrep](https://github.com/BurntSushi/ripgrep) and [bat](https://githu
 cargo install dook
 ```
 
+If you want support for `--stdin`, which needs an unreleased version of `hyperpolyglot`:
+
+```sh
+cargo install --git https://github.com/pteromys/dook -F stdin
+```
+
 ## Example usage
 
 ```

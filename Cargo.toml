@@ -21,7 +21,7 @@ console = "0.15"
 digest = "0.10.0"
 etcetera = "0.8.0"
 env_logger = "0.11.3"
-hyperpolyglot = "0.1.7"
+hyperpolyglot = { version = "0.1.7", git = "https://github.com/monkslc/hyperpolyglot.git", rev = "40f091679b94057ec925f7f8925e2960d1d9dbf2" }
 libloading = "0.8.6"
 log = "0.4.21"
 merde = { version = "10.0.0", features = ["core", "deserialize", "yaml"] }
@@ -41,3 +41,6 @@ name = "dook"
 # src/lib.rs only exists for integration tests to link against;
 # don't rerun the unit tests on it since they'll all run for src/main.rs anyway.
 test = false
+
+[features]
+stdin = []

@@ -44,7 +44,13 @@ struct Cli {
         required = false,
         help = format!("Config file path (default: {:?})", config::default_config_path())
     )]
-    config: Option<std::ffi::OsString>,
+    config: Option<std::path::PathBuf>,
+
+    /// Read from standard input instead of searching current directory
+    /// (makes language detection slower)
+    #[cfg(feature = "stdin")]
+    #[arg(long)]
+    stdin: bool,
 
     #[arg(long, value_enum, default_value_t)]
     color: EnablementLevel,
@@ -78,12 +84,12 @@ struct Cli {
 
     /// Dump the syntax tree of the specified file, for debugging extraction queries.
     #[arg(long, required = false)]
-    dump: Option<std::ffi::OsString>,
+    dump: Option<std::path::PathBuf>,
 }
 
 fn main() -> std::io::Result<std::process::ExitCode> {
     use clap::Parser;
-    use std::io::{Read, Write};
+    use std::io::Write;
 
     env_logger::init();
 
@@ -98,7 +104,7 @@ fn main() -> std::io::Result<std::process::ExitCode> {
     };
 
     // load config
-    let custom_config = config::Config::load(cli.config)?;
+    let custom_config = config::Config::load(&cli.config)?;
     let default_config = config::Config::load_default();
     let merged_config = match custom_config {
         None => default_config,
@@ -128,8 +134,8 @@ fn main() -> std::io::Result<std::process::ExitCode> {
         );
         return Ok(std::process::ExitCode::SUCCESS);
     }
-    let mut current_pattern = match cli.pattern {
-        Some(pattern) => pattern.clone(),
+    let mut current_pattern = match &cli.pattern {
+        Some(pattern) => pattern.to_owned(),
         None => {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -140,11 +146,11 @@ fn main() -> std::io::Result<std::process::ExitCode> {
     let mut local_patterns: std::vec::Vec<regex::Regex> = vec![];
 
     // store the result here
-    let mut print_ranges: Vec<(std::ffi::OsString, range_union::RangeUnion)> = Vec::new();
-    loop {
-        let filenames = ripgrep(&current_pattern)?;
-
-        // infer syntax, then search with tree_sitter
+    let mut print_ranges: Vec<(Option<std::path::PathBuf>, range_union::RangeUnion)> = Vec::new();
+    // parse stdin only once, and upfront, if asked to read it
+    let (use_stdin, stdin, stdin_parsed) = parse_stdin(&cli, &mut language_loader, &merged_config);
+    for is_first_loop in std::iter::once(true).chain(std::iter::repeat(false)) {
+        // track recursion
         let mut recurse_defs: std::vec::Vec<String> = vec![];
         local_patterns.push(
             match regex::Regex::new(&(String::from("^(") + current_pattern.as_str() + ")$")) {
@@ -152,18 +158,36 @@ fn main() -> std::io::Result<std::process::ExitCode> {
                 Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, e)),
             },
         );
+        // pattern to match all captured names against when searching through files
         let local_pattern = local_patterns.last().unwrap();
+        // pass 0: find candidate files with ripgrep
+        let filenames: Box<dyn Iterator<Item = Option<std::path::PathBuf>>> =
+            if use_stdin && is_first_loop {
+                Box::new(std::iter::once(None))
+            } else {
+                let ripgrep_results = ripgrep(&current_pattern)?.into_iter().map(Some);
+                if use_stdin {
+                    Box::new(std::iter::once(None).chain(ripgrep_results))
+                } else {
+                    Box::new(ripgrep_results)
+                }
+            };
         for path in filenames {
-            let file_info = match searches::ParsedFile::from_filename(
-                &path,
-                &mut language_loader,
-                &merged_config,
-            ) {
-                Err(_) => continue, // TODO eprintln! every error that isn't a failure to parse
-                Ok(f) => f,
+            // infer syntax, then search with tree_sitter
+            let tmp_parsed_file: searches::ParsedFile; // storage for file_info if created on the fly
+            let file_info = match path {
+                None => stdin_parsed.as_ref().unwrap(),
+                Some(path) => {
+                    tmp_parsed_file = searches::ParsedFile::from_filename(
+                        &path,
+                        &mut language_loader,
+                        &merged_config,
+                    )?;
+                    &tmp_parsed_file
+                }
             };
             let language_info = merged_config
-                .get_language_info(file_info.language_name, &mut language_loader)
+                .get_language_info(file_info.language_name, &mut language_loader) // todo cache
                 .ok_or_else(|| {
                     std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,
@@ -184,7 +208,7 @@ fn main() -> std::io::Result<std::process::ExitCode> {
                 true,
             );
             if !new_ranges.is_empty() {
-                print_ranges.push((path, new_ranges)); // TODO extend prev if new_ranges comes after in the same file
+                print_ranges.push((file_info.path.to_owned(), new_ranges)); // TODO extend prev if new_ranges comes after in the same file
                 recurse_defs.extend(
                     new_recurses.into_iter().filter(|name| {
                         local_patterns.iter().all(|pattern| !pattern.is_match(name))
@@ -228,17 +252,56 @@ fn main() -> std::io::Result<std::process::ExitCode> {
                     .iter_filling_gaps(1) // snip indicator - 8< - takes 1 line anyway
                     .map(|x| format!("--line-range={}:{}", x.start + 1, x.end)), // bat end is inclusive
             )
-            .arg(path);
-        let output = match cmd.stderr(std::process::Stdio::inherit()).output() {
-            Ok(output) => output.stdout,
-            Err(e) => std::vec::Vec::from(format!("Error reading {:?}: {}", path, e)),
+            .stderr(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::piped());
+        let child = match path {
+            Some(path) => cmd.arg(path).spawn(),
+            None => {
+                let mut child = cmd
+                    .arg(format!(
+                        "-l{}",
+                        stdin_parsed.as_ref().unwrap().language_name_str
+                    ))
+                    .stdin(std::process::Stdio::piped())
+                    .spawn();
+                if let Ok(child) = &mut child {
+                    let mut child_stdin = child.stdin.take().unwrap();
+                    let stdin_clone = stdin.clone();
+                    std::thread::spawn(move || {
+                        let result = child_stdin.write_all(&stdin_clone);
+                        if paging::is_broken_pipe(&result) {
+                        } else {
+                            result.unwrap()
+                        }
+                    });
+                }
+                child
+            }
         };
-        if let Err(e) = pager.write_all(&output) {
-            if e.kind() == std::io::ErrorKind::BrokenPipe {
+        if let Err(e) = child.and_then(|mut child| {
+            // std::io::copy uses more efficient syscalls than explicitly reading and writing
+            let mut child_stdout = child.stdout.take().unwrap();
+            let copy_result = std::io::copy(&mut child_stdout, &mut pager);
+            let wait_result = child.wait().and_then(|exit_status| {
+                if exit_status.success() {
+                    Ok(())
+                } else {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("reader exited {:?}", exit_status),
+                    ))
+                }
+            });
+            copy_result.map(|_| wait_result)
+        }) {
+            if pager.is_abandoned() {
                 // stdout is gone so let's just leave quietly
                 return Ok(std::process::ExitCode::SUCCESS);
+            } else {
+                let error_message =
+                    std::vec::Vec::from(format!("Error reading {:?}: {}\n", path, e));
+                pager.write_all(&error_message)?;
             }
-            break;
         }
     }
     // wait for pager
@@ -252,7 +315,44 @@ fn main() -> std::io::Result<std::process::ExitCode> {
     Ok(std::process::ExitCode::SUCCESS)
 }
 
-fn ripgrep(pattern: &regex::Regex) -> std::io::Result<std::vec::Vec<std::ffi::OsString>> {
+#[cfg(not(feature = "stdin"))]
+fn parse_stdin(
+    _: &Cli,
+    _: &mut loader::Loader,
+    _: &config::Config,
+) -> (bool, Vec<u8>, std::io::Result<searches::ParsedFile>) {
+    (
+        false,
+        vec![],
+        Err(std::io::Error::new(std::io::ErrorKind::NotFound, "")),
+    )
+}
+
+#[cfg(feature = "stdin")]
+fn parse_stdin(
+    cli: &Cli,
+    language_loader: &mut loader::Loader,
+    merged_config: &config::Config,
+) -> (bool, Vec<u8>, std::io::Result<searches::ParsedFile>) {
+    use std::io::Read;
+
+    let use_stdin = cli.stdin;
+    let mut stdin = vec![];
+    let stdin_parsed = if use_stdin {
+        std::io::stdin().read_to_end(&mut stdin).and_then(|_| {
+            if stdin.is_empty() {
+                Err(std::io::Error::new(std::io::ErrorKind::NotFound, ""))
+            } else {
+                searches::ParsedFile::from_bytes(stdin.clone(), language_loader, merged_config)
+            }
+        })
+    } else {
+        Err(std::io::Error::new(std::io::ErrorKind::NotFound, ""))
+    };
+    (use_stdin, stdin, stdin_parsed)
+}
+
+fn ripgrep(pattern: &regex::Regex) -> std::io::Result<Vec<std::path::PathBuf>> {
     use os_str_bytes::OsStrBytes;
 
     // first-pass search with ripgrep
@@ -266,7 +366,8 @@ fn ripgrep(pattern: &regex::Regex) -> std::io::Result<std::vec::Vec<std::ffi::Os
         .output()?;
     if !rg_output.status.success() {
         if let Some(e) = rg_output.status.code() {
-            return Err(std::io::Error::new( // TODO adopt this exit code as our own
+            return Err(std::io::Error::new(
+                // TODO adopt this exit code as our own
                 std::io::ErrorKind::Other,
                 format!("ripgrep exited {:?}", e),
             ));
@@ -277,19 +378,21 @@ fn ripgrep(pattern: &regex::Regex) -> std::io::Result<std::vec::Vec<std::ffi::Os
         ));
     }
     // TODO is this even actually the right way to convert stdout to OsStr?
-    let filenames: std::io::Result<std::vec::Vec<std::ffi::OsString>> = rg_output
+    let filenames: std::io::Result<Vec<std::path::PathBuf>> = rg_output
         .stdout
         .split(|x| *x == 0)
-        .map(|x| match std::ffi::OsStr::from_io_bytes(x) {
-            None => Err(std::io::Error::new(
+        .filter_map(|x| match std::ffi::OsStr::from_io_bytes(x) {
+            None => Some(Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 format!("{:?}", std::vec::Vec::from(x)),
-            )),
-            Some(y) => Ok(y.to_os_string()),
-        })
-        .filter(|f| match f {
-            Ok(f) => !f.is_empty(),
-            _ => true,
+            ))),
+            Some(y) => {
+                if y.is_empty() {
+                    None
+                } else {
+                    Some(Ok(y.to_owned().into()))
+                }
+            }
         })
         .collect();
     filenames.map(|mut f| {

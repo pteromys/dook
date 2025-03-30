@@ -14,6 +14,7 @@ changelog 🧚
 - Fixes:
   - Search patterns with `|` no longer fail to restrict to whole-name match.
   - js/ts/tsx: catch names bound by destructuring.
+- Add `--stdin` to search on stdin, gated by `stdin` feature.
 
 ## 0.2.0 (2024-12-14)
 

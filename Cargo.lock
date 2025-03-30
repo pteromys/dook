@@ -186,6 +186,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "circular-queue"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2df8276ab95fe8665a814190345239d91105df5df0fda26ddc7784c96244dc76"
+dependencies = [
+ "version_check",
+]
+
+[[package]]
 name = "clap"
 version = "2.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -571,8 +580,7 @@ checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
 [[package]]
 name = "hyperpolyglot"
 version = "0.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da03ba9199e5f86b1578b2bd0ce19c25d44e153b8305a0a54da6d8fa0b66360d"
+source = "git+https://github.com/monkslc/hyperpolyglot.git?rev=40f091679b94057ec925f7f8925e2960d1d9dbf2#40f091679b94057ec925f7f8925e2960d1d9dbf2"
 dependencies = [
  "clap 2.34.0",
  "ignore",
@@ -997,8 +1005,10 @@ checksum = "953ec861398dccce10c670dfeaf3ec4911ca479e9c02154b3a215178c5f566f2"
 [[package]]
 name = "polyglot_tokenizer"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6091586d3c58239b154276ca7d7a14035605b829a27b92dbe10625e78ef909d"
+source = "git+https://github.com/monkslc/hyperpolyglot.git?rev=40f091679b94057ec925f7f8925e2960d1d9dbf2#40f091679b94057ec925f7f8925e2960d1d9dbf2"
+dependencies = [
+ "circular-queue",
+]
 
 [[package]]
 name = "ppv-lite86"

@@ -23,3 +23,19 @@ merde::derive! {
         "go" => Go,
     }
 }
+
+impl LanguageName {
+    pub fn from_hyperpolyglot(hyperpolyglot_name: &str) -> Option<Self> {
+        Some(match hyperpolyglot_name {
+            "Rust" => Self::Rust,
+            "Python" => Self::Python,
+            "JavaScript" => Self::Js,
+            "TypeScript" => Self::Ts,
+            "TSX" => Self::Tsx,
+            "C" => Self::C,
+            "C++" => Self::CPlusPlus,
+            "Go" => Self::Go,
+            _ => return None,
+        })
+    }
+}

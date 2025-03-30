@@ -2,14 +2,16 @@ use crate::language_name::LanguageName;
 use crate::{config, loader, range_union};
 
 pub struct ParsedFile {
+    pub path: Option<std::path::PathBuf>,
     pub language_name: LanguageName,
+    pub language_name_str: String,
     pub source_code: std::vec::Vec<u8>,
     pub tree: tree_sitter::Tree,
 }
 
 impl ParsedFile {
     pub fn from_filename(
-        path: &std::ffi::OsString,
+        path: &std::path::Path,
         language_loader: &mut loader::Loader,
         config: &config::Config,
     ) -> Result<ParsedFile, std::io::Error> {
@@ -17,36 +19,63 @@ impl ParsedFile {
         // TODO 1: support embeds
         // TODO 2: group by language and do a second pass with language-specific regexes?
         // strings from https://github.com/monkslc/hyperpolyglot/blob/master/languages.yml
-        let language_name = match hyperpolyglot::detect(std::path::Path::new(path))?
+        let language_name_str = hyperpolyglot::detect(path)?
             .ok_or_else(|| {
                 std::io::Error::new(std::io::ErrorKind::Unsupported, format!("{:?}", path))
             })?
-            .language()
-        {
-            "Rust" => LanguageName::Rust,
-            "Python" => LanguageName::Python,
-            "JavaScript" => LanguageName::Js,
-            "TypeScript" => LanguageName::Ts,
-            "TSX" => LanguageName::Tsx,
-            "C" => LanguageName::C,
-            "C++" => LanguageName::CPlusPlus,
-            "Go" => LanguageName::Go,
-            other_language => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Unsupported,
-                    other_language,
-                ))
-            }
+            .language();
+        let source_code = std::fs::read(path)?;
+        let result = Self::from_bytes_and_language_name(
+            source_code,
+            language_name_str,
+            language_loader,
+            config,
+        );
+        result.map(|mut f| {
+            f.path = Some(path.to_owned());
+            f
+        })
+    }
+
+    #[cfg(feature = "stdin")]
+    pub fn from_bytes(
+        source_code: Vec<u8>,
+        language_loader: &mut loader::Loader,
+        config: &config::Config,
+    ) -> Result<ParsedFile, std::io::Error> {
+        use core::str;
+        let language_name_str = hyperpolyglot::detectors::classify(
+            str::from_utf8(&source_code)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Unsupported, e))?,
+            &[],
+        );
+        Self::from_bytes_and_language_name(source_code, language_name_str, language_loader, config)
+    }
+
+    fn from_bytes_and_language_name(
+        source_code: Vec<u8>,
+        language_name_str: &str,
+        language_loader: &mut loader::Loader,
+        config: &config::Config,
+    ) -> Result<ParsedFile, std::io::Error> {
+        let Some(language_name) = LanguageName::from_hyperpolyglot(language_name_str) else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                language_name_str,
+            ));
         };
         let language = language_loader
             .get_language(config.get_parser_source(language_name).unwrap())
             .unwrap()
             .unwrap();
-        let source_code = std::fs::read(path)?;
-        Self::from_bytes(source_code, language_name, &language)
+        let result = Self::from_bytes_and_language(source_code, language_name, &language);
+        result.map(|mut f| {
+            f.language_name_str = language_name_str.to_owned();
+            f
+        })
     }
 
-    pub fn from_bytes(
+    pub fn from_bytes_and_language(
         source_code: Vec<u8>,
         language_name: LanguageName,
         language: &tree_sitter::Language,
@@ -59,7 +88,9 @@ impl ParsedFile {
             .parse(&source_code, None)
             .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::TimedOut, ""))?;
         Ok(ParsedFile {
+            path: None,
             language_name,
+            language_name_str: format!("{:?}", language_name),
             source_code,
             tree,
         })
