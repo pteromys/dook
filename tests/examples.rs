@@ -30,12 +30,7 @@ fn verify_examples(language_name: LanguageName, source: &[u8], cases: &[TestCase
         .unwrap();
     let tree = parser.parse(source, None).unwrap();
     for (query, expect_ranges, expect_recurses) in cases {
-        let pattern_str = String::from(if language_name == LanguageName::C {
-            "^\\s*"
-        } else {
-            "^"
-        }) + query
-            + "$";
+        let pattern_str = String::from("^") + query + "$";
         let pattern = regex::Regex::new(&pattern_str).unwrap();
         let (result, recurses) =
             searches::find_definition(source, &tree, &language_info, &pattern, true);
