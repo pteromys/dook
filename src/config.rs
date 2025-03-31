@@ -263,13 +263,32 @@ impl Config {
     pub fn get_parser_source(&self, language_name: LanguageName) -> Option<&loader::ParserSource> {
         self.languages.get(&language_name)?.parser.as_ref()
     }
+}
+
+pub struct QueryCompiler<'a> {
+    config: &'a Config,
+    cache: std::collections::HashMap<LanguageName, Option<std::rc::Rc<LanguageInfo>>>,
+}
+
+impl<'a> QueryCompiler<'a> {
+    pub fn new(config: &'a Config) -> Self {
+        Self {
+            config,
+            cache: std::collections::HashMap::new(),
+        }
+    }
 
     pub fn get_language_info(
-        &self,
+        &mut self,
         language_name: LanguageName,
         loader: &mut loader::Loader,
-    ) -> Option<Result<LanguageInfo, tree_sitter::QueryError>> {
-        let language_config = self.languages.get(&language_name)?;
+    ) -> Option<Result<std::rc::Rc<LanguageInfo>, tree_sitter::QueryError>> {
+        let entry = self.cache.entry(language_name);
+        let entry = match entry {
+            std::collections::hash_map::Entry::Occupied(e) => return e.get().clone().map(Ok),
+            std::collections::hash_map::Entry::Vacant(e) => e,
+        };
+        let language_config = self.config.languages.get(&language_name)?;
         let language = loader
             .get_language(language_config.parser.as_ref().unwrap())
             .unwrap()
@@ -284,14 +303,17 @@ impl Config {
             .as_ref()
             .map(|v| v.iter().map(String::from).collect())
             .unwrap_or_default();
-        Some(LanguageInfo::new(
-            &language,
-            match_patterns,
-            &language_config.sibling_patterns,
-            &language_config.parent_patterns,
-            &language_config.parent_exclusions,
-            recurse_patterns,
-        ))
+        Some(
+            LanguageInfo::new(
+                &language,
+                match_patterns,
+                &language_config.sibling_patterns,
+                &language_config.parent_patterns,
+                &language_config.parent_exclusions,
+                recurse_patterns,
+            )
+            .map(|x| entry.insert(Some(std::rc::Rc::new(x))).clone().unwrap()),
+        )
     }
 }
 

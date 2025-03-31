@@ -3,7 +3,7 @@
     reason = "They're all declared as Vec<Range>"
 )]
 
-use dook::config::Config;
+use dook::config::{Config, QueryCompiler};
 use dook::language_name::LanguageName;
 use dook::loader;
 use dook::searches;
@@ -15,7 +15,8 @@ fn verify_examples(language_name: LanguageName, source: &[u8], cases: &[TestCase
     let target_dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
     let mut language_loader =
         loader::Loader::new(target_dir.clone(), Some(target_dir.clone()), false);
-    let language_info = config
+    let mut query_compiler = QueryCompiler::new(&config);
+    let language_info = query_compiler
         .get_language_info(language_name, &mut language_loader)
         .unwrap()
         .unwrap();

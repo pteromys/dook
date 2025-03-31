@@ -119,6 +119,7 @@ fn main() -> std::io::Result<std::process::ExitCode> {
         ),
         Ok(d) => loader::Loader::new(d.cache_dir().join("sources"), None, false),
     };
+    let mut query_compiler = config::QueryCompiler::new(&merged_config);
 
     // check for dump-parse mode
     if let Some(dump_target) = cli.dump {
@@ -192,8 +193,8 @@ fn main() -> std::io::Result<std::process::ExitCode> {
                     }
                 },
             };
-            let language_info = merged_config
-                .get_language_info(file_info.language_name, &mut language_loader) // todo cache
+            let language_info = query_compiler
+                .get_language_info(file_info.language_name, &mut language_loader)
                 .ok_or_else(|| {
                     std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,
