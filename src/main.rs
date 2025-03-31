@@ -177,14 +177,20 @@ fn main() -> std::io::Result<std::process::ExitCode> {
             let tmp_parsed_file: searches::ParsedFile; // storage for file_info if created on the fly
             let file_info = match path {
                 None => stdin_parsed.as_ref().unwrap(),
-                Some(path) => {
-                    tmp_parsed_file = searches::ParsedFile::from_filename(
-                        &path,
-                        &mut language_loader,
-                        &merged_config,
-                    )?;
-                    &tmp_parsed_file
-                }
+                Some(path) => match searches::ParsedFile::from_filename(
+                    &path,
+                    &mut language_loader,
+                    &merged_config,
+                ) {
+                    Err(e) => {
+                        eprintln!("Skipping {:?}: {:?}", &path, e);
+                        continue;
+                    }
+                    Ok(f) => {
+                        tmp_parsed_file = f;
+                        &tmp_parsed_file
+                    }
+                },
             };
             let language_info = merged_config
                 .get_language_info(file_info.language_name, &mut language_loader) // todo cache
