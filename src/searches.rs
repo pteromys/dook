@@ -97,6 +97,11 @@ impl ParsedFile {
     }
 }
 
+pub struct SearchResult {
+    pub ranges: range_union::RangeUnion,
+    pub recurse_names: Vec<String>,
+}
+
 pub fn end_point_to_end_line(p: tree_sitter::Point) -> usize {
     if p.column == 0 {
         p.row
@@ -111,9 +116,9 @@ pub fn find_definition(
     language_info: &config::LanguageInfo,
     pattern: &regex::Regex,
     recurse: bool,
-) -> (range_union::RangeUnion, std::vec::Vec<String>) {
+) -> SearchResult {
     use tree_sitter::StreamingIterator;
-    let mut result: range_union::RangeUnion = Default::default();
+    let mut ranges: range_union::RangeUnion = Default::default();
     let mut cursor = tree_sitter::QueryCursor::new();
     let mut recurse_cursor = tree_sitter::QueryCursor::new();
     let mut recurse_names: std::vec::Vec<String> = std::vec::Vec::new();
@@ -176,7 +181,7 @@ pub fn find_definition(
                         let new_sibling_range = sibling.range().start_point.row
                             ..end_point_to_end_line(sibling.range().end_point);
                         if let Some(r) = last_ambiguously_attached_sibling_range {
-                            result.push(r);
+                            ranges.push(r);
                         }
                         last_ambiguously_attached_sibling_range = Some(new_sibling_range);
                         node = sibling;
@@ -184,7 +189,7 @@ pub fn find_definition(
                         if let Some(r) = last_ambiguously_attached_sibling_range {
                             let sibling_end_line = end_point_to_end_line(sibling.range().end_point);
                             if sibling_end_line < r.end {
-                                result.push(sibling_end_line.max(r.start)..r.end);
+                                ranges.push(sibling_end_line.max(r.start)..r.end);
                             }
                             last_ambiguously_attached_sibling_range = None;
                         }
@@ -192,7 +197,7 @@ pub fn find_definition(
                     }
                 }
                 if let Some(r) = last_ambiguously_attached_sibling_range {
-                    result.push(r);
+                    ranges.push(r);
                 }
                 // then include a header line from each relevant ancestor
                 while let Some(parent) = node.parent() {
@@ -213,7 +218,7 @@ pub fn find_definition(
                             .map(|c| c.range().end_point)
                             .min()
                             .unwrap_or(parent.range().end_point);
-                        result.push(context_start..end_point_to_end_line(context_end));
+                        ranges.push(context_start..end_point_to_end_line(context_end));
                     }
                     node = parent;
                 }
@@ -222,5 +227,8 @@ pub fn find_definition(
     }
     recurse_names.sort();
     recurse_names.dedup();
-    (result, recurse_names)
+    SearchResult {
+        ranges,
+        recurse_names,
+    }
 }

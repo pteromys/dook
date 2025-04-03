@@ -207,17 +207,17 @@ fn main() -> std::io::Result<std::process::ExitCode> {
                 .map_err(|e| {
                     std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{}", e))
                 })?;
-            let (new_ranges, new_recurses) = searches::find_definition(
+            let search_result = searches::find_definition(
                 file_info.source_code.as_slice(),
                 &file_info.tree,
                 &language_info,
                 local_pattern,
                 true,
             );
-            if !new_ranges.is_empty() {
-                print_ranges.push((file_info.path.to_owned(), new_ranges)); // TODO extend prev if new_ranges comes after in the same file
+            if !search_result.ranges.is_empty() {
+                print_ranges.push((file_info.path.to_owned(), search_result.ranges)); // TODO extend prev if new_ranges comes after in the same file
                 recurse_defs.extend(
-                    new_recurses.into_iter().filter(|name| {
+                    search_result.recurse_names.into_iter().filter(|name| {
                         local_patterns.iter().all(|pattern| !pattern.is_match(name))
                     }),
                 );
