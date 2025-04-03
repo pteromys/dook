@@ -19,6 +19,11 @@ If you want support for `--stdin`, which needs an unreleased version of `hyperpo
 cargo install --git https://github.com/pteromys/dook -F stdin
 ```
 
+If you want completion assistance in bash or zsh, install either:
+
+- assets/completions/dook.bash as `~/.local/share/bash-completion/completions/dook` or
+- assets/completions/dook.zsh as a file named `_dook` somewhere on zsh's `fpath`.
+
 ## Example usage
 
 ```

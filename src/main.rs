@@ -88,6 +88,10 @@ struct Cli {
     /// Dump the syntax tree of the specified file, for debugging extraction queries.
     #[arg(long, required = false)]
     dump: Option<std::path::PathBuf>,
+
+    /// Print only names matching the pattern, probably for shell completions.
+    #[arg(long)]
+    only_names: bool,
 }
 
 fn main() -> std::io::Result<std::process::ExitCode> {
@@ -149,8 +153,9 @@ fn main() -> std::io::Result<std::process::ExitCode> {
     };
     let mut local_patterns: std::vec::Vec<regex::Regex> = vec![];
 
-    // store the result here
+    // store the results here
     let mut print_ranges: Vec<(Option<std::path::PathBuf>, range_union::RangeUnion)> = Vec::new();
+    let mut print_names: Vec<String> = Vec::new();
     // parse stdin only once, and upfront, if asked to read it
     let (use_stdin, stdin, stdin_parsed) = parse_stdin(&cli, &mut language_loader, &merged_config);
     for is_first_loop in std::iter::once(true).chain(std::iter::repeat(false)) {
@@ -210,28 +215,46 @@ fn main() -> std::io::Result<std::process::ExitCode> {
                 .map_err(|e| {
                     std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{}", e))
                 })?;
-            let search_result = searches::find_definition(
-                file_info.source_code.as_slice(),
-                &file_info.tree,
-                &language_info,
-                local_pattern,
-                true,
-            );
-            if !search_result.ranges.is_empty() {
-                print_ranges.push((file_info.path.to_owned(), search_result.ranges)); // TODO extend prev if new_ranges comes after in the same file
-                recurse_defs.extend(
-                    search_result.recurse_names.into_iter().filter(|name| {
-                        local_patterns.iter().all(|pattern| !pattern.is_match(name))
-                    }),
+            if cli.only_names {
+                print_names.extend_from_slice(&searches::find_names(
+                    file_info.source_code.as_slice(),
+                    &file_info.tree,
+                    &language_info,
+                    local_pattern,
+                ));
+            } else {
+                let search_result = searches::find_definition(
+                    file_info.source_code.as_slice(),
+                    &file_info.tree,
+                    &language_info,
+                    local_pattern,
+                    true,
                 );
+                if !search_result.ranges.is_empty() {
+                    print_ranges.push((file_info.path.to_owned(), search_result.ranges)); // TODO extend prev if new_ranges comes after in the same file
+                    recurse_defs.extend(search_result.recurse_names.into_iter().filter(|name| {
+                        local_patterns.iter().all(|pattern| !pattern.is_match(name))
+                    }));
+                }
             }
         }
         recurse_defs.dedup();
-        if cli.recurse && recurse_defs.len() == 1 {
+        if cli.recurse && !cli.only_names && recurse_defs.len() == 1 {
             current_pattern = regex::Regex::new(&regex::escape(&recurse_defs[0])).unwrap();
         } else {
             break;
         }
+    }
+
+    // early exit for --only-names
+    if cli.only_names {
+        print_names.sort();
+        print_names.dedup();
+        let stdout = console::Term::stdout();
+        for name in print_names {
+            stdout.write_line(&name)?;
+        }
+        return Ok(std::process::ExitCode::SUCCESS);
     }
 
     // set up paging if requested

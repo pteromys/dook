@@ -110,6 +110,40 @@ pub fn end_point_to_end_line(p: tree_sitter::Point) -> usize {
     }
 }
 
+pub fn find_names(
+    source_code: &[u8],
+    tree: &tree_sitter::Tree,
+    language_info: &config::LanguageInfo,
+    pattern: &regex::Regex,
+) -> Vec<String> {
+    use tree_sitter::StreamingIterator;
+    let mut cursor = tree_sitter::QueryCursor::new();
+    let mut names: std::vec::Vec<String> = std::vec::Vec::new();
+    for node_query in language_info.match_patterns.iter() {
+        let name_idx = node_query.capture_index_for_name("name").unwrap();
+        let mut matches = cursor.matches(node_query, tree.root_node(), source_code);
+        while let Some(query_match) = matches.next() {
+            names.extend(query_match.captures.iter().filter_map(|capture| {
+                if capture.index != name_idx {
+                    return None;
+                }
+                let name = std::str::from_utf8(&source_code[capture.node.byte_range()])
+                    .unwrap()
+                    .to_owned();
+                if pattern.is_match(&name) {
+                    Some(name)
+                } else {
+                    None
+                }
+            }));
+        }
+    }
+    names.dedup(); // lol idk
+    names.sort();
+    names.dedup();
+    names
+}
+
 pub fn find_definition(
     source_code: &[u8],
     tree: &tree_sitter::Tree,

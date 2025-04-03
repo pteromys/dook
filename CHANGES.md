@@ -17,6 +17,7 @@ changelog 🧚
   - Fixed failing to match some recursion patterns.
 - Add `--stdin` to search on stdin, gated by `stdin` feature.
 - Cache tree-sitter query compilation for 4x speedup.
+- Add bash and zsh completions, powered by `--only-names`.
 
 ## 0.2.0 (2024-12-14)
 
