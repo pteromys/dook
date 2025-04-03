@@ -14,6 +14,7 @@ changelog 🧚
 - Fixes:
   - Search patterns with `|` no longer fail to restrict to whole-name match.
   - Catch names bound by destructuring in js, ts, tsx, python.
+  - Fixed failing to match some recursion patterns.
 - Add `--stdin` to search on stdin, gated by `stdin` feature.
 - Cache tree-sitter query compilation for 4x speedup.
 

@@ -139,13 +139,14 @@ pub fn find_definition(
                 .filter(|capture| capture.index == def_idx)
             {
                 let mut node = capture.node;
-                result.push(
+                ranges.push(
                     node.range().start_point.row..end_point_to_end_line(node.range().end_point),
                 );
                 // find names to look up for recursion
                 if recurse {
                     for recurse_query in language_info.recurse_patterns.iter() {
-                        let recurse_name_idx = node_query.capture_index_for_name("name").unwrap();
+                        let recurse_name_idx =
+                            recurse_query.capture_index_for_name("name").unwrap();
                         let mut recurse_matches =
                             recurse_cursor.matches(recurse_query, node, source_code);
                         while let Some(recurse_match) = recurse_matches.next() {

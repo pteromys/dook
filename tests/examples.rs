@@ -67,7 +67,7 @@ fn python() {
         ("permutations", vec![59..63], vec!["permutations"]),
         ("combinations", vec![65..67], vec!["factorial", "permutations"]),
         ("combinations2", vec![69..71], vec!["factorial"]),
-        ("attr", vec![73..78], vec!["setattr"]),
+        ("attr", vec![73..78], vec!["__setattr__", "__setitem__", "setattr"]),
         ("eleven", vec![82..84], vec![]),
         ("twelve", vec![82..84], vec![]),
         ("thirteen", vec![82..83, 85..86], vec![]),
