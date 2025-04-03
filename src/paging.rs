@@ -23,7 +23,7 @@ impl MaybePager {
             match pager_command.stdin(std::process::Stdio::piped()).spawn() {
                 Ok(child) => Some(child),
                 Err(e) => {
-                    println!("Pager didn't start: {}", e);
+                    eprintln!("Pager didn't start: {:?}", e);
                     None
                 }
             }

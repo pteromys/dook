@@ -42,7 +42,10 @@ struct Cli {
         short,
         long,
         required = false,
-        help = format!("Config file path (default: {:?})", config::default_config_path())
+        help = format!("Config file path (default: {})", match config::default_config_path() {
+            None => String::from("unset"),
+            Some(p) => format!("{:?}", p),
+        })
     )]
     config: Option<std::path::PathBuf>,
 
@@ -314,8 +317,8 @@ fn main() -> std::io::Result<std::process::ExitCode> {
     // wait for pager
     match pager.wait() {
         Ok(0) => (),
-        Ok(status) => println!("Pager exited {}", status),
-        Err(e) => println!("Pager died or vanished: {}", e),
+        Ok(status) => eprintln!("Pager exited {}", status),
+        Err(e) => eprintln!("Pager died or vanished: {}", e),
     }
 
     // yeah yeah whatever

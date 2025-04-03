@@ -6,7 +6,7 @@ use dook::loader;
 fn default_patterns_are_loadable() {
     use strum::IntoEnumIterator;
     let target_dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
-    println!("CARGO_TARGET_TMPDIR is {:?}", target_dir);
+    eprintln!("CARGO_TARGET_TMPDIR is {:?}", target_dir);
     let mut language_loader =
         loader::Loader::new(target_dir.clone(), Some(target_dir.clone()), false);
     let default_config = Config::load_default();
