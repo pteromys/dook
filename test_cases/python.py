@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
+from contextlib import nullcontext as noodlecontext
 import dataclasses
 import functools
-import typing
 
 
 def identity(f):
@@ -78,3 +78,23 @@ def shenanigans(x):
     dict.__setitem__(x, 'attr', 4)  # yes 🦆
     setattr('attr', 'nope', 5)  # no!!1 🪿
     object.__setattr__(x, 'attr')  # I mean this would throw if you actually ran it
+
+# weirder bindings
+def more_shenanigans():
+    with noodlecontext() as eleven, noodlecontext() as twelve:
+        ...
+    async with noodlecontext() as thirteen:
+        ...
+    try:
+        # this is a comment
+        for fourteen, _ in [
+            (14, 15), (14, 16),
+        ]:
+            ...
+    except Exception as fifteen:
+        ...
+
+# sequence unpacking in assignment
+_, _, sixteen, _ = (
+    14, 15, 16, 17
+)

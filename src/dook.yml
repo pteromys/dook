@@ -164,6 +164,7 @@ python:
       (expression_statement (assignment left: (_) @name)) @def
       (expression_statement (assignment left: (attribute attribute: (_) @name))) @def
       (expression_statement (assignment left: (subscript subscript: (string (string_content) @name)))) @def
+      (expression_statement (assignment left: (pattern_list (identifier) @name))) @def
       (dictionary (pair key: (string (string_content) @name)) @def)
       (parameters (identifier) @name @def)
       (lambda_parameters (identifier) @name @def)
@@ -171,6 +172,12 @@ python:
       (default_parameter name: (_) @name) @def
       (typed_default_parameter name: (_) @name) @def
       (call function: (identifier) @f (#eq? @f "setattr") arguments: (argument_list ("(" (_) "," (string (string_content) @name)))) @def
+      (aliased_import alias: (identifier) @name) @def
+      (as_pattern_target (identifier) @name) @def
+      (for_statement left: (_) @name @def)
+      (for_statement left: (_) @name right: (_) @def)
+      (for_statement left: (pattern_list (identifier) @name) @def)
+      (for_statement left: (pattern_list (identifier) @name) right: (_) @def)
     ]
   - |
     (call function: (attribute attribute: (identifier) @f (#any-of? @f "__setattr__" "__setitem__")) arguments: (argument_list ((string (string_content) @name) "," (_) ")"))) @def
@@ -181,6 +188,9 @@ python:
   - class_definition
   - function_definition
   - assignment
+  - import_from_statement
+  - with_statement
+  - for_statement
   parent_exclusions:
   - body
   - right

@@ -13,7 +13,7 @@ changelog 🧚
 - Support more `bat` options (`--wrap` and `-S`).
 - Fixes:
   - Search patterns with `|` no longer fail to restrict to whole-name match.
-  - js/ts/tsx: catch names bound by destructuring.
+  - Catch names bound by destructuring in js, ts, tsx, python.
 - Add `--stdin` to search on stdin, gated by `stdin` feature.
 - Cache tree-sitter query compilation for 4x speedup.
 

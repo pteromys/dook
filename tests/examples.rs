@@ -68,6 +68,12 @@ fn python() {
         ("combinations", vec![65..67], vec!["factorial", "permutations"]),
         ("combinations2", vec![69..71], vec!["factorial"]),
         ("attr", vec![73..78], vec!["setattr"]),
+        ("eleven", vec![82..84], vec![]),
+        ("twelve", vec![82..84], vec![]),
+        ("thirteen", vec![82..83, 85..86], vec![]),
+        ("fourteen", vec![82..83, 89..92], vec![]),  // 2nd group should be 88..92
+        ("fifteen", vec![82..83, 93..94], vec![]),
+        ("sixteen", vec![96..100], vec![]),
     ];
     verify_examples(
         LanguageName::Python,
