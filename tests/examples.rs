@@ -36,8 +36,16 @@ fn verify_examples(language_name: LanguageName, source: &[u8], cases: &[TestCase
         let search_result =
             searches::find_definition(source, &tree, &language_info, &pattern, true);
         let result_vec: Vec<_> = search_result.ranges.iter().collect();
-        assert_eq!(result_vec, *expect_ranges);
-        assert_eq!(search_result.recurse_names, *expect_recurses);
+        assert_eq!(
+            result_vec, *expect_ranges,
+            "searching {:?} for {:?} got {:?}, expected {:?}",
+            language_name, query, result_vec, expect_ranges
+        );
+        assert_eq!(
+            search_result.recurse_names, *expect_recurses,
+            "searching {:?} for {:?} recursed toward {:?}, expected {:?}",
+            language_name, query, search_result.recurse_names, expect_recurses
+        );
     }
 }
 
@@ -92,9 +100,9 @@ fn js() {
         ("three", vec![3..6], vec![]),  // function declaration
         // old-style class, prototype shenanigans
         ("four", vec![7..10, 11..17, 20..23], vec![]),
-        ("f", vec![12..15], vec![]),  // object key, bare
-        ("flop", vec![12..15], vec![]),  // named function expression
-        ("eff", vec![15..16], vec![]),  // object key, in quotes
+        ("f", vec![11..15], vec![]),  // object key, bare
+        ("flop", vec![11..15], vec![]),  // named function expression
+        ("eff", vec![11..12, 15..16], vec![]),  // object key, in quotes
         ("g", vec![20..23], vec![]),  // assign to dot-property
         ("five", vec![24..29], vec![]),  // new-style class
         ("six", vec![24..26], vec![]),  // class member variable
@@ -107,11 +115,13 @@ fn js() {
         ("thirteen", vec![33..34], vec![]),  // object destructuring
         ("fourteen", vec![34..35], vec![]),  // shorthand object destructuring
     ];
-    verify_examples(
-        LanguageName::Js,
-        include_bytes!("../test_cases/javascript.js"),
-        &cases,
-    );
+    for language_name in [LanguageName::Js, LanguageName::Ts, LanguageName::Tsx] {
+        verify_examples(
+            language_name,
+            include_bytes!("../test_cases/javascript.js"),
+            &cases,
+        );
+    }
 }
 
 #[test]

@@ -145,8 +145,12 @@ js:
   - method_definition
   - arrow_function
   - class_declaration
+  - variable_declarator
+  - assignment_expression
   parent_exclusions:
   - body
+  - value
+  - right
 python:
   parser:
     tarball:
@@ -251,6 +255,7 @@ ts:
     [
       (function_signature name: (_) @name)
       (function_declaration name: (_) @name)
+      (function_expression name: (_) @name)
       (method_signature name: (_) @name)
       (method_definition name: (_) @name)
       (abstract_method_signature name: (_) @name)
@@ -293,10 +298,13 @@ ts:
   - enum_declaration
   - property_signature
   - pair
+  - variable_declarator
+  - assignment_expression
   parent_exclusions:
   - body
   - value
   - type
+  - right
 tsx:
   parser:
     tarball:
@@ -309,6 +317,7 @@ tsx:
     [
       (function_signature name: (_) @name)
       (function_declaration name: (_) @name)
+      (function_expression name: (_) @name)
       (method_signature name: (_) @name)
       (method_definition name: (_) @name)
       (abstract_method_signature name: (_) @name)
@@ -352,8 +361,11 @@ tsx:
   - enum_declaration
   - property_signature
   - pair
+  - variable_declarator
+  - assignment_expression
   - jsx_opening_element
   parent_exclusions:
   - body
   - value
   - type
+  - right

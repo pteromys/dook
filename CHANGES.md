@@ -15,6 +15,8 @@ changelog 🧚
   - Search patterns with `|` no longer fail to restrict to whole-name match.
   - Catch names bound by destructuring in js, ts, tsx, python.
   - Fixed failing to match some recursion patterns.
+  - Catch named function expressions in ts/tsx.
+  - Show parent object names in js/ts/tsx.
 - Add `--stdin` to search on stdin, gated by `stdin` feature.
 - Cache tree-sitter query compilation for 4x speedup.
 - Add bash and zsh completions, powered by `--only-names`.
