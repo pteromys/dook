@@ -1,3 +1,5 @@
+use crate::language_name::LanguageName;
+
 pub struct Loader {
     cache: std::collections::HashMap<ParserSource, Option<std::rc::Rc<tree_sitter::Language>>>,
     loader: tree_sitter_loader::Loader,
@@ -10,6 +12,7 @@ pub enum ParserSource {
     AbsolutePath(String), // tree-sitter-loader will recompile if parser.c is newer than .so
     GitSource(GitSource), // clone/fetch/checkout/whatever, then handle like AbsolutePath
     TarballSource(TarballSource), // recompile if .tar is newer than .so
+    Static(LanguageName), // use built-in
 }
 
 merde::derive! {
@@ -18,6 +21,7 @@ merde::derive! {
         "path" => AbsolutePath,
         "git" => GitSource,
         "tarball" => TarballSource,
+        "static" => Static,
     }
 }
 
@@ -98,6 +102,7 @@ pub enum LoaderError {
         source: Box<dyn DebuggableDisplayable>,
         src_path: std::path::PathBuf,
     },
+    LanguageWasNotBuiltIn(LanguageName),
 }
 
 // this is just here because anyhow::Error doesn't claim to implement std::error::Error;
@@ -145,6 +150,9 @@ impl std::fmt::Display for LoaderError {
             Self::CompileFailed { src_path, source }
                 => write!(f, "Could not compile grammar at {:?}: {}",
                           src_path, *source),
+            Self::LanguageWasNotBuiltIn(language_name)
+                => write!(f, "Support for {:?} was not enabled at compile time",
+                          language_name),
         }
     }
 }
@@ -230,6 +238,14 @@ fn get_language(
     offline: bool,
 ) -> Result<tree_sitter::Language, LoaderError> {
     match source {
+        ParserSource::Static(language_name) => {
+            if *language_name == LanguageName::Python {
+                if let Some(language) = get_builtin_language_python() {
+                    return Ok(language);
+                }
+            }
+            Err(LoaderError::LanguageWasNotBuiltIn(language_name.to_owned()))
+        }
         ParserSource::AbsolutePath(src_path) => {
             load_language_at_path(loader, std::path::Path::new(src_path), false)
         }
@@ -311,7 +327,6 @@ fn load_language_if_tarball_older(
     tarball: &TarballSource,
     sources_dir: &std::path::Path,
 ) -> Option<tree_sitter::Language> {
-    //let ParserSource::TarballSource(tarball) = source else { return None };
     let tarball_path = sources_dir.join(&tarball.name).with_extension("tar");
     let dll_path = loader
         .parser_lib_path
@@ -566,4 +581,16 @@ where
     };
     std::mem::forget(library);
     Ok(language)
+}
+
+// Statically compiled languages
+
+#[cfg(not(feature = "static_python"))]
+fn get_builtin_language_python() -> Option<tree_sitter::Language> {
+    None
+}
+
+#[cfg(feature = "static_python")]
+fn get_builtin_language_python() -> Option<tree_sitter::Language> {
+    Some(tree_sitter_python::LANGUAGE.into())
 }

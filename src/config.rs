@@ -226,7 +226,16 @@ impl Config {
     }
 
     pub fn load_default() -> Self {
-        Self::load_from_str(&DEFAULT_CONFIG.to_ascii_lowercase()).unwrap()
+        let mut result = Self::load_from_str(&DEFAULT_CONFIG.to_ascii_lowercase())
+            .expect("default_patterns_are_loadable test should have caught this");
+        if cfg!(feature = "static_python") {
+            result
+                .languages
+                .get_mut(&LanguageName::Python)
+                .expect("default_patterns_are_loadable test should have caught this")
+                .parser = Some(loader::ParserSource::Static(LanguageName::Python));
+        }
+        result
     }
 
     pub fn merge(mut self, overrides: Self) -> Self {

@@ -6,6 +6,8 @@ changelog 🧚
 - Dynamically load parsers with tree-sitter-loader.
   - Sources go in ~/.cache/dook/sources.
   - Compiled parsers go in ~/.cache/tree-sitter/lib.
+  - Some parsers can be built in at compile time, using the following features:
+    - `static_python`
 - Config file format version 2:
   - Add integer "_version" field.
   - Switch to yaml since we use a lot of multi-line strings.
