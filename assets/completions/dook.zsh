@@ -29,6 +29,7 @@ _dook () {
 		+ '(special_action)' \
 		'--dump=[Dump syntax tree of a file]:file to dump:_files' \
 		'--only-names[Print only names matching the pattern]' \
+		'--offline[Use only already-downloaded parsers]' \
 		{'-h','--help'}'[Print help]' \
 		'*: :{_dook_symbols}'
 }

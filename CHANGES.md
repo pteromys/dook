@@ -10,16 +10,19 @@ changelog 🧚
   - Add integer "_version" field.
   - Switch to yaml since we use a lot of multi-line strings.
   - Add per-language "parser" field for specifying parser sources.
-- Support more `bat` options (`--wrap` and `-S`).
+- New CLI options:
+  - `--wrap` and `-S` (forwarded to `bat`)
+  - `--stdin` to search on stdin, gated by `stdin` feature
+  - `--only-names` to print matching names but not defs (used for completions)
+  - `--offline` to not download anything
 - Fixes:
   - Search patterns with `|` no longer fail to restrict to whole-name match.
   - Catch names bound by destructuring in js, ts, tsx, python.
   - Fixed failing to match some recursion patterns.
   - Catch named function expressions in ts/tsx.
   - Show parent object names in js/ts/tsx.
-- Add `--stdin` to search on stdin, gated by `stdin` feature.
 - Cache tree-sitter query compilation for 4x speedup.
-- Add bash and zsh completions, powered by `--only-names`.
+- Add bash and zsh completions.
 
 ## 0.2.0 (2024-12-14)
 

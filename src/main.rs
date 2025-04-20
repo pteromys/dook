@@ -55,6 +55,15 @@ struct Cli {
     #[arg(long)]
     stdin: bool,
 
+    #[arg(
+        long,
+        help = format!("Use only the parsers already downloaded to {:?}", match config::dirs() {
+            Ok(d) => d.cache_dir().join("sources"),
+            Err(_) => std::path::PathBuf::new(),
+        })
+    )]
+    offline: bool,
+
     #[arg(long, value_enum, default_value_t)]
     color: EnablementLevel,
 
@@ -124,7 +133,7 @@ fn main() -> std::io::Result<std::process::ExitCode> {
             Some(std::path::PathBuf::new()),
             true,
         ),
-        Ok(d) => loader::Loader::new(d.cache_dir().join("sources"), None, false),
+        Ok(d) => loader::Loader::new(d.cache_dir().join("sources"), None, cli.offline),
     };
     let mut query_compiler = config::QueryCompiler::new(&merged_config);
 
