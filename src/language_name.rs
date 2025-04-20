@@ -1,13 +1,17 @@
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, strum::EnumIter)]
-pub enum LanguageName {
-    Rust,
-    Python,
-    Js,
-    Ts,
-    Tsx,
-    C,
-    CPlusPlus,
-    Go,
+use enum_derive_2018::IterVariants;
+
+macro_attr_2018::macro_attr! {
+    #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, IterVariants!(Vars))]
+    pub enum LanguageName {
+        Rust,
+        Python,
+        Js,
+        Ts,
+        Tsx,
+        C,
+        CPlusPlus,
+        Go,
+    }
 }
 
 merde::derive! {
