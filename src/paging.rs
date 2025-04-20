@@ -44,10 +44,7 @@ impl MaybePager {
                 match child.wait() {
                     Ok(status) => match status.code() {
                         Some(c) => Ok(c),
-                        None => Err(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            "Unknown exit status",
-                        )),
+                        None => Err(std::io::Error::other("Unknown exit status")),
                     },
                     Err(e) => Err(e),
                 }

@@ -368,10 +368,10 @@ fn main() -> Result<std::process::ExitCode, DookError> {
                 if exit_status.success() {
                     Ok(())
                 } else {
-                    Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("reader exited {:?}", exit_status),
-                    ))
+                    Err(std::io::Error::other(format!(
+                        "reader exited {:?}",
+                        exit_status
+                    )))
                 }
             });
             copy_result.map(|_| wait_result)
@@ -421,9 +421,12 @@ fn parse_stdin(
     let mut bytes = vec![];
     let parsed = match std::io::stdin().read_to_end(&mut bytes) {
         Err(e) => Err(searches::FileParseError::UnreadableFile(
-            searches::UnreadableFileError::from(e),
+            searches::UnreadableFileError {
+                message: e.to_string(),
+                path: None,
+            },
         )),
-        Ok(_) if bytes.is_empty() => Err(searches::FileParseError::EmptyStdin),
+        Ok(_) if bytes.is_empty() => Err(searches::FileParseError::EmptyStdin(())),
         Ok(_) => searches::ParsedFile::from_bytes(bytes.clone(), language_loader, merged_config),
     };
     Some(Stdin { bytes, parsed })

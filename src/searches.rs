@@ -1,5 +1,6 @@
 use crate::language_name::LanguageName;
 use crate::{config, loader, range_union};
+use enum_derive_2018::EnumFromInner;
 
 pub struct ParsedFile {
     pub path: Option<std::path::PathBuf>,
@@ -9,13 +10,15 @@ pub struct ParsedFile {
     pub tree: tree_sitter::Tree,
 }
 
-#[derive(Debug, Clone)]
-pub enum FileParseError {
-    UnknownLanguage(UnknownLanguageError),
-    UnsupportedLanguage(UnsupportedLanguageError),
-    FailedToAttachLanguage(FailedToAttachLanguageError), // probably version mismatch
-    UnreadableFile(UnreadableFileError),
-    EmptyStdin,
+macro_attr_2018::macro_attr! {
+    #[derive(Debug, Clone, EnumFromInner!)]
+    pub enum FileParseError {
+        UnknownLanguage(UnknownLanguageError),
+        UnsupportedLanguage(UnsupportedLanguageError),
+        FailedToAttachLanguage(FailedToAttachLanguageError), // probably version mismatch
+        UnreadableFile(UnreadableFileError),
+        EmptyStdin(()),
+    }
 }
 
 impl std::fmt::Display for FileParseError {
@@ -25,32 +28,8 @@ impl std::fmt::Display for FileParseError {
             FileParseError::UnsupportedLanguage(e) => write!(f, "{}", e),
             FileParseError::FailedToAttachLanguage(e) => write!(f, "{}", e),
             FileParseError::UnreadableFile(e) => write!(f, "{}", e),
-            FileParseError::EmptyStdin => write!(f, "stdin is empty"),
+            FileParseError::EmptyStdin(()) => write!(f, "stdin is empty"),
         }
-    }
-}
-
-impl From<UnknownLanguageError> for FileParseError {
-    fn from(value: UnknownLanguageError) -> Self {
-        Self::UnknownLanguage(value)
-    }
-}
-
-impl From<UnsupportedLanguageError> for FileParseError {
-    fn from(value: UnsupportedLanguageError) -> Self {
-        Self::UnsupportedLanguage(value)
-    }
-}
-
-impl From<FailedToAttachLanguageError> for FileParseError {
-    fn from(value: FailedToAttachLanguageError) -> Self {
-        Self::FailedToAttachLanguage(value)
-    }
-}
-
-impl From<UnreadableFileError> for FileParseError {
-    fn from(value: UnreadableFileError) -> Self {
-        Self::UnreadableFile(value)
     }
 }
 
@@ -99,33 +78,8 @@ impl std::fmt::Display for FailedToAttachLanguageError {
 
 #[derive(Debug, Clone)]
 pub struct UnreadableFileError {
-    message: String,
-    path: Option<std::path::PathBuf>,
-}
-
-impl UnreadableFileError {
-    fn with_path(mut self, path: std::path::PathBuf) -> Self {
-        self.path = Some(path);
-        self
-    }
-}
-
-impl From<std::io::Error> for UnreadableFileError {
-    fn from(value: std::io::Error) -> Self {
-        Self {
-            message: format!("{}", value),
-            path: None,
-        }
-    }
-}
-
-impl From<std::str::Utf8Error> for UnreadableFileError {
-    fn from(value: std::str::Utf8Error) -> Self {
-        Self {
-            message: format!("{}", value),
-            path: None,
-        }
-    }
+    pub message: String,
+    pub path: Option<std::path::PathBuf>,
 }
 
 impl std::fmt::Display for UnreadableFileError {
@@ -148,13 +102,18 @@ impl ParsedFile {
         // TODO 2: group by language and do a second pass with language-specific regexes?
         // strings from https://github.com/monkslc/hyperpolyglot/blob/master/languages.yml
         let language_name_str = hyperpolyglot::detect(path)
-            .map_err(|e| UnreadableFileError::from(e).with_path(path.to_owned()))?
+            .map_err(|e| UnreadableFileError {
+                message: e.to_string(),
+                path: Some(path.to_owned()),
+            })?
             .ok_or_else(|| UnknownLanguageError {
                 path: path.to_owned(),
             })?
             .language();
-        let source_code = std::fs::read(path)
-            .map_err(|e| UnreadableFileError::from(e).with_path(path.to_owned()))?;
+        let source_code = std::fs::read(path).map_err(|e| UnreadableFileError {
+            message: e.to_string(),
+            path: Some(path.to_owned()),
+        })?;
         let mut result = Self::from_bytes_and_language_name(
             source_code,
             language_name_str,
@@ -178,7 +137,10 @@ impl ParsedFile {
     ) -> Result<ParsedFile, FileParseError> {
         use core::str;
         let language_name_str = hyperpolyglot::detectors::classify(
-            str::from_utf8(&source_code).map_err(UnreadableFileError::from)?,
+            str::from_utf8(&source_code).map_err(|e| UnreadableFileError {
+                message: e.to_string(),
+                path: None,
+            })?,
             &[],
         );
         Self::from_bytes_and_language_name(source_code, language_name_str, language_loader, config)
