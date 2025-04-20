@@ -14,11 +14,13 @@ fn verify_examples(language_name: LanguageName, source: &[u8], cases: &[TestCase
     let config = Config::load_default();
     let target_dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
     let mut language_loader =
-        loader::Loader::new(target_dir.clone(), Some(target_dir.clone()), false);
+        loader::Loader::new(target_dir.clone(), Some(target_dir.clone()), false).expect(
+            "should have called tree_sitter_loader::Loader::with_parser_lib_path(), not new()",
+        );
+
     let mut query_compiler = QueryCompiler::new(&config);
     let language_info = query_compiler
         .get_language_info(language_name, &mut language_loader)
-        .unwrap()
         .unwrap();
     let mut parser = tree_sitter::Parser::new();
     parser

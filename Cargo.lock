@@ -364,7 +364,6 @@ dependencies = [
 name = "dook"
 version = "0.2.0"
 dependencies = [
- "anyhow",
  "base16ct",
  "clap 4.5.18",
  "console",

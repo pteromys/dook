@@ -9,32 +9,165 @@ pub struct ParsedFile {
     pub tree: tree_sitter::Tree,
 }
 
+#[derive(Debug, Clone)]
+pub enum FileParseError {
+    UnknownLanguage(UnknownLanguageError),
+    UnsupportedLanguage(UnsupportedLanguageError),
+    FailedToAttachLanguage(FailedToAttachLanguageError), // probably version mismatch
+    UnreadableFile(UnreadableFileError),
+    EmptyStdin,
+}
+
+impl std::fmt::Display for FileParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FileParseError::UnknownLanguage(e) => write!(f, "{}", e),
+            FileParseError::UnsupportedLanguage(e) => write!(f, "{}", e),
+            FileParseError::FailedToAttachLanguage(e) => write!(f, "{}", e),
+            FileParseError::UnreadableFile(e) => write!(f, "{}", e),
+            FileParseError::EmptyStdin => write!(f, "stdin is empty"),
+        }
+    }
+}
+
+impl From<UnknownLanguageError> for FileParseError {
+    fn from(value: UnknownLanguageError) -> Self {
+        Self::UnknownLanguage(value)
+    }
+}
+
+impl From<UnsupportedLanguageError> for FileParseError {
+    fn from(value: UnsupportedLanguageError) -> Self {
+        Self::UnsupportedLanguage(value)
+    }
+}
+
+impl From<FailedToAttachLanguageError> for FileParseError {
+    fn from(value: FailedToAttachLanguageError) -> Self {
+        Self::FailedToAttachLanguage(value)
+    }
+}
+
+impl From<UnreadableFileError> for FileParseError {
+    fn from(value: UnreadableFileError) -> Self {
+        Self::UnreadableFile(value)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UnknownLanguageError {
+    pub path: std::path::PathBuf,
+}
+
+impl std::fmt::Display for UnknownLanguageError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unknown language in file at {:?}", self.path)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UnsupportedLanguageError {
+    pub language: String,
+    pub path: Option<std::path::PathBuf>,
+}
+
+impl std::fmt::Display for UnsupportedLanguageError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unsupported language {:?}", self.language)?;
+        match &self.path {
+            Some(path) => write!(f, " in file at {:?}", path),
+            None => write!(f, " in input"),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FailedToAttachLanguageError {
+    language: LanguageName,
+    message: String,
+}
+
+impl std::fmt::Display for FailedToAttachLanguageError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "language {:?} incompatible with parser: {:?}",
+            self.language, self.message
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UnreadableFileError {
+    message: String,
+    path: Option<std::path::PathBuf>,
+}
+
+impl UnreadableFileError {
+    fn with_path(mut self, path: std::path::PathBuf) -> Self {
+        self.path = Some(path);
+        self
+    }
+}
+
+impl From<std::io::Error> for UnreadableFileError {
+    fn from(value: std::io::Error) -> Self {
+        Self {
+            message: format!("{}", value),
+            path: None,
+        }
+    }
+}
+
+impl From<std::str::Utf8Error> for UnreadableFileError {
+    fn from(value: std::str::Utf8Error) -> Self {
+        Self {
+            message: format!("{}", value),
+            path: None,
+        }
+    }
+}
+
+impl std::fmt::Display for UnreadableFileError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.path {
+            Some(path) => write!(f, "cannot read {:?}: {:?}", path, self.message),
+            None => write!(f, "cannot read input: {:?}", self.message),
+        }
+    }
+}
+
 impl ParsedFile {
     pub fn from_filename(
         path: &std::path::Path,
         language_loader: &mut loader::Loader,
         config: &config::Config,
-    ) -> Result<ParsedFile, std::io::Error> {
+    ) -> Result<ParsedFile, FileParseError> {
         // TODO 0: add more languages
         // TODO 1: support embeds
         // TODO 2: group by language and do a second pass with language-specific regexes?
         // strings from https://github.com/monkslc/hyperpolyglot/blob/master/languages.yml
-        let language_name_str = hyperpolyglot::detect(path)?
-            .ok_or_else(|| {
-                std::io::Error::new(std::io::ErrorKind::Unsupported, format!("{:?}", path))
+        let language_name_str = hyperpolyglot::detect(path)
+            .map_err(|e| UnreadableFileError::from(e).with_path(path.to_owned()))?
+            .ok_or_else(|| UnknownLanguageError {
+                path: path.to_owned(),
             })?
             .language();
-        let source_code = std::fs::read(path)?;
-        let result = Self::from_bytes_and_language_name(
+        let source_code = std::fs::read(path)
+            .map_err(|e| UnreadableFileError::from(e).with_path(path.to_owned()))?;
+        let mut result = Self::from_bytes_and_language_name(
             source_code,
             language_name_str,
             language_loader,
             config,
         );
-        result.map(|mut f| {
+        if let Ok(f) = &mut result {
             f.path = Some(path.to_owned());
-            f
-        })
+        }
+        if let Err(FileParseError::UnsupportedLanguage(e)) = &mut result {
+            e.path = Some(path.to_owned());
+        }
+        result
     }
 
     #[cfg(feature = "stdin")]
@@ -42,11 +175,10 @@ impl ParsedFile {
         source_code: Vec<u8>,
         language_loader: &mut loader::Loader,
         config: &config::Config,
-    ) -> Result<ParsedFile, std::io::Error> {
+    ) -> Result<ParsedFile, FileParseError> {
         use core::str;
         let language_name_str = hyperpolyglot::detectors::classify(
-            str::from_utf8(&source_code)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Unsupported, e))?,
+            str::from_utf8(&source_code).map_err(UnreadableFileError::from)?,
             &[],
         );
         Self::from_bytes_and_language_name(source_code, language_name_str, language_loader, config)
@@ -57,36 +189,38 @@ impl ParsedFile {
         language_name_str: &str,
         language_loader: &mut loader::Loader,
         config: &config::Config,
-    ) -> Result<ParsedFile, std::io::Error> {
-        let Some(language_name) = LanguageName::from_hyperpolyglot(language_name_str) else {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Unsupported,
-                language_name_str,
-            ));
-        };
+    ) -> Result<ParsedFile, FileParseError> {
+        let language_name =
+            LanguageName::from_hyperpolyglot(language_name_str).ok_or_else(|| {
+                UnsupportedLanguageError {
+                    language: language_name_str.to_owned(),
+                    path: None,
+                }
+            })?;
         let language = language_loader
             .get_language(config.get_parser_source(language_name).unwrap())
             .unwrap()
             .unwrap();
-        let result = Self::from_bytes_and_language(source_code, language_name, &language);
-        result.map(|mut f| {
-            f.language_name_str = language_name_str.to_owned();
-            f
-        })
+        let mut result = Self::from_bytes_and_language(source_code, language_name, &language)?;
+        result.language_name_str = language_name_str.to_owned();
+        Ok(result)
     }
 
     pub fn from_bytes_and_language(
         source_code: Vec<u8>,
         language_name: LanguageName,
         language: &tree_sitter::Language,
-    ) -> Result<ParsedFile, std::io::Error> {
+    ) -> Result<ParsedFile, FileParseError> {
         let mut parser = tree_sitter::Parser::new();
         parser
             .set_language(language)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            .map_err(|e| FailedToAttachLanguageError {
+                language: language_name,
+                message: format!("{}", e),
+            })?;
         let tree = parser
             .parse(&source_code, None)
-            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::TimedOut, ""))?;
+            .expect("parse() should have returned a tree if parser.set_language() was called");
         Ok(ParsedFile {
             path: None,
             language_name,
@@ -119,12 +253,11 @@ pub fn find_names(
     use tree_sitter::StreamingIterator;
     let mut cursor = tree_sitter::QueryCursor::new();
     let mut names: std::vec::Vec<String> = std::vec::Vec::new();
-    for node_query in language_info.match_patterns.iter() {
-        let name_idx = node_query.capture_index_for_name("name").unwrap();
-        let mut matches = cursor.matches(node_query, tree.root_node(), source_code);
+    for def_pattern in language_info.match_patterns.iter() {
+        let mut matches = cursor.matches(&def_pattern.query, tree.root_node(), source_code);
         while let Some(query_match) = matches.next() {
             names.extend(query_match.captures.iter().filter_map(|capture| {
-                if capture.index != name_idx {
+                if capture.index != def_pattern.index_name {
                     return None;
                 }
                 let name = std::str::from_utf8(&source_code[capture.node.byte_range()])
@@ -158,14 +291,12 @@ pub fn find_definition(
     let mut recurse_names: std::vec::Vec<String> = std::vec::Vec::new();
     //let mut context_cursor = tree_sitter::QueryCursor::new();
     //context_cursor.set_max_start_depth(0);
-    for node_query in language_info.match_patterns.iter() {
-        let name_idx = node_query.capture_index_for_name("name").unwrap();
-        let def_idx = node_query.capture_index_for_name("def").unwrap();
+    for def_pattern in language_info.match_patterns.iter() {
         let mut matches = cursor
-            .matches(node_query, tree.root_node(), source_code)
+            .matches(&def_pattern.query, tree.root_node(), source_code)
             .filter(|query_match| {
                 query_match.captures.iter().any(|capture| {
-                    capture.index == name_idx
+                    capture.index == def_pattern.index_name
                         && pattern.is_match(
                             std::str::from_utf8(&source_code[capture.node.byte_range()]).unwrap(),
                         )
@@ -175,7 +306,7 @@ pub fn find_definition(
             for capture in query_match
                 .captures
                 .iter()
-                .filter(|capture| capture.index == def_idx)
+                .filter(|capture| capture.index == def_pattern.index_def)
             {
                 let mut node = capture.node;
                 ranges.push(
@@ -183,16 +314,14 @@ pub fn find_definition(
                 );
                 // find names to look up for recursion
                 if recurse {
-                    for recurse_query in language_info.recurse_patterns.iter() {
-                        let recurse_name_idx =
-                            recurse_query.capture_index_for_name("name").unwrap();
+                    for recurse_pattern in language_info.recurse_patterns.iter() {
                         let mut recurse_matches =
-                            recurse_cursor.matches(recurse_query, node, source_code);
+                            recurse_cursor.matches(&recurse_pattern.query, node, source_code);
                         while let Some(recurse_match) = recurse_matches.next() {
-                            for recurse_capture in recurse_match
-                                .captures
-                                .iter()
-                                .filter(|recurse_capture| recurse_capture.index == recurse_name_idx)
+                            for recurse_capture in
+                                recurse_match.captures.iter().filter(|recurse_capture| {
+                                    recurse_capture.index == recurse_pattern.index_name
+                                })
                             {
                                 let recurse_name = std::str::from_utf8(
                                     &source_code[recurse_capture.node.byte_range()],

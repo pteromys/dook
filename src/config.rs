@@ -270,6 +270,59 @@ pub struct QueryCompiler<'a> {
     cache: std::collections::HashMap<LanguageName, Option<std::rc::Rc<LanguageInfo>>>,
 }
 
+#[derive(Debug)]
+pub enum QueryCompilerError {
+    LanguageIsNotInConfig(LanguageName),
+    HasFailedBefore(LanguageName),
+    GetLanguageInfoError(LanguageName, GetLanguageInfoError),
+}
+
+#[derive(Debug)]
+pub enum GetLanguageInfoError {
+    QueryCompileFailed {
+        query_source: String,
+        query_error: tree_sitter::QueryError,
+    },
+    UnrecognizedNodeType(String),
+    UnrecognizedFieldName(String),
+    RequiredCaptureMissing {
+        query_source: String,
+        capture_name: &'static str,
+        config_field: &'static str,
+    },
+}
+
+#[rustfmt::skip] // keep compact
+impl std::fmt::Display for QueryCompilerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::LanguageIsNotInConfig(language_name)
+                => write!(f, "language {:?} not found in any config", language_name),
+            Self::HasFailedBefore(language_name)
+                => write!(f, "skipping due to previous error for language {:?}", language_name),
+            Self::GetLanguageInfoError(language_name, e)
+                => write!(f, "in {:?}: {}", language_name, e),
+        }
+    }
+}
+
+#[rustfmt::skip] // keep compact
+impl std::fmt::Display for GetLanguageInfoError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::QueryCompileFailed { query_source, query_error }
+                => write!(f, "cannot compile query {:?}: {}", query_source, query_error),
+            Self::UnrecognizedNodeType(node_type)
+                => write!(f, "{:?} is not a node type the parser recognizes", node_type),
+            Self::UnrecognizedFieldName(field_name)
+                => write!(f, "{:?} is not a field name the parser recognizes", field_name),
+            Self::RequiredCaptureMissing { query_source, capture_name, config_field }
+                => write!(f, "{} requires capturing @{} not found in {:?}",
+                          config_field, capture_name, query_source),
+        }
+    }
+}
+
 impl<'a> QueryCompiler<'a> {
     pub fn new(config: &'a Config) -> Self {
         Self {
@@ -282,47 +335,60 @@ impl<'a> QueryCompiler<'a> {
         &mut self,
         language_name: LanguageName,
         loader: &mut loader::Loader,
-    ) -> Option<Result<std::rc::Rc<LanguageInfo>, tree_sitter::QueryError>> {
+    ) -> Result<std::rc::Rc<LanguageInfo>, QueryCompilerError> {
         let entry = self.cache.entry(language_name);
         let entry = match entry {
-            std::collections::hash_map::Entry::Occupied(e) => return e.get().clone().map(Ok),
+            std::collections::hash_map::Entry::Occupied(e) => {
+                return e
+                    .get()
+                    .clone()
+                    .ok_or(QueryCompilerError::HasFailedBefore(language_name))
+            }
             std::collections::hash_map::Entry::Vacant(e) => e,
         };
-        let language_config = self.config.languages.get(&language_name)?;
+        let language_config = self
+            .config
+            .languages
+            .get(&language_name)
+            .ok_or(QueryCompilerError::LanguageIsNotInConfig(language_name))?;
         let language = loader
             .get_language(language_config.parser.as_ref().unwrap())
             .unwrap()
             .unwrap();
-        let match_patterns: std::vec::Vec<String> = language_config
-            .match_patterns
-            .iter()
-            .map(String::from)
-            .collect();
-        let recurse_patterns: std::vec::Vec<String> = language_config
-            .recurse_patterns
-            .as_ref()
-            .map(|v| v.iter().map(String::from).collect())
-            .unwrap_or_default();
-        Some(
-            LanguageInfo::new(
-                &language,
-                match_patterns,
-                &language_config.sibling_patterns,
-                &language_config.parent_patterns,
-                &language_config.parent_exclusions,
-                recurse_patterns,
-            )
-            .map(|x| entry.insert(Some(std::rc::Rc::new(x))).clone().unwrap()),
-        )
+        match LanguageInfo::new(
+            &language,
+            &language_config.match_patterns,
+            &language_config.sibling_patterns,
+            &language_config.parent_patterns,
+            &language_config.parent_exclusions,
+            language_config.recurse_patterns.clone().unwrap_or_default(),
+        ) {
+            Ok(x) => Ok(entry.insert(Some(std::rc::Rc::new(x))).clone().unwrap()),
+            Err(e) => {
+                entry.insert(None);
+                Err(QueryCompilerError::GetLanguageInfoError(language_name, e))
+            }
+        }
     }
 }
 
 pub struct LanguageInfo {
-    pub match_patterns: std::vec::Vec<tree_sitter::Query>,
+    pub match_patterns: std::vec::Vec<DefinitionPattern>,
     pub sibling_patterns: std::vec::Vec<std::num::NonZero<u16>>,
     pub parent_patterns: std::vec::Vec<std::num::NonZero<u16>>,
     pub parent_exclusions: std::vec::Vec<std::num::NonZero<u16>>,
-    pub recurse_patterns: std::vec::Vec<tree_sitter::Query>,
+    pub recurse_patterns: std::vec::Vec<RecursePattern>,
+}
+
+pub struct DefinitionPattern {
+    pub query: tree_sitter::Query,
+    pub index_name: u32,
+    pub index_def: u32,
+}
+
+pub struct RecursePattern {
+    pub query: tree_sitter::Query,
+    pub index_name: u32,
 }
 
 impl LanguageInfo {
@@ -332,76 +398,110 @@ impl LanguageInfo {
         Item3: AsRef<str>,
         Item4: AsRef<str>,
         Item5: AsRef<str>,
-        I1: IntoIterator<Item = Item1>,
-        I2: IntoIterator<Item = Item2>,
-        I3: IntoIterator<Item = Item3>,
-        I4: IntoIterator<Item = Item4>,
-        I5: IntoIterator<Item = Item5>,
     >(
         language: &tree_sitter::Language,
-        match_patterns: I1,
-        sibling_patterns: I2,
-        parent_patterns: I3,
-        parent_exclusions: I4,
-        recurse_patterns: I5,
-    ) -> Result<Self, tree_sitter::QueryError> {
-        fn compile_queries<Item: AsRef<str>, II: IntoIterator<Item = Item>>(
+        match_patterns: &Vec<Item1>,
+        sibling_patterns: &Vec<Item2>,
+        parent_patterns: &Vec<Item3>,
+        parent_exclusions: &Vec<Item4>,
+        recurse_patterns: Vec<Item5>,
+    ) -> Result<Self, GetLanguageInfoError> {
+        fn compile_query(
             language: &tree_sitter::Language,
-            sources: II,
-        ) -> Result<std::vec::Vec<tree_sitter::Query>, tree_sitter::QueryError> {
-            sources
-                .into_iter()
-                .map(|source| tree_sitter::Query::new(language, source.as_ref()))
-                .collect()
+            query_source: &str,
+        ) -> Result<tree_sitter::Query, GetLanguageInfoError> {
+            tree_sitter::Query::new(language, query_source).map_err(|e| {
+                GetLanguageInfoError::QueryCompileFailed {
+                    query_source: query_source.to_owned(),
+                    query_error: e,
+                }
+            })
+        }
+        fn get_capture_index(
+            query: &tree_sitter::Query,
+            capture_name: &'static str,
+            query_source: &str,
+            config_field: &'static str,
+        ) -> Result<u32, GetLanguageInfoError> {
+            query.capture_index_for_name(capture_name).ok_or_else(|| {
+                GetLanguageInfoError::RequiredCaptureMissing {
+                    query_source: query_source.to_owned(),
+                    capture_name,
+                    config_field,
+                }
+            })
         }
         fn resolve_node_types<Item: AsRef<str>, II: IntoIterator<Item = Item>>(
             language: &tree_sitter::Language,
             node_type_names: II,
-        ) -> Result<std::vec::Vec<std::num::NonZero<u16>>, tree_sitter::QueryError> {
+        ) -> Result<std::vec::Vec<std::num::NonZero<u16>>, GetLanguageInfoError> {
             node_type_names
                 .into_iter()
                 .map(|node_type_name| {
-                    match std::num::NonZero::new(
-                        language.id_for_node_kind(node_type_name.as_ref(), true),
-                    ) {
-                        None => Err(tree_sitter::QueryError {
-                            row: 0,
-                            column: 0,
-                            offset: 0,
-                            message: format!("unknown node type: {:?}", node_type_name.as_ref()),
-                            kind: tree_sitter::QueryErrorKind::NodeType,
-                        }),
-                        Some(n) => Ok(n),
-                    }
+                    std::num::NonZero::new(language.id_for_node_kind(node_type_name.as_ref(), true))
+                        .ok_or_else(|| {
+                            GetLanguageInfoError::UnrecognizedNodeType(
+                                node_type_name.as_ref().to_owned(),
+                            )
+                        })
                 })
                 .collect()
         }
         fn resolve_field_names<Item: AsRef<str>, II: IntoIterator<Item = Item>>(
             language: &tree_sitter::Language,
             field_names: II,
-        ) -> Result<std::vec::Vec<std::num::NonZero<u16>>, tree_sitter::QueryError> {
+        ) -> Result<std::vec::Vec<std::num::NonZero<u16>>, GetLanguageInfoError> {
             field_names
                 .into_iter()
                 .map(|field_name| {
                     language
                         .field_id_for_name(field_name.as_ref())
-                        .ok_or_else(|| tree_sitter::QueryError {
-                            row: 0,
-                            column: 0,
-                            offset: 0,
-                            message: format!("unknown field name: {:?}", field_name.as_ref()),
-                            kind: tree_sitter::QueryErrorKind::Field,
+                        .ok_or_else(|| {
+                            GetLanguageInfoError::UnrecognizedFieldName(
+                                field_name.as_ref().to_owned(),
+                            )
                         })
                 })
                 .collect()
         }
-        Ok(Self {
-            match_patterns: compile_queries(language, match_patterns)?,
+        let mut result = Self {
+            match_patterns: Vec::with_capacity(match_patterns.len()),
             sibling_patterns: resolve_node_types(language, sibling_patterns)?,
             parent_patterns: resolve_node_types(language, parent_patterns)?,
             parent_exclusions: resolve_field_names(language, parent_exclusions)?,
-            recurse_patterns: compile_queries(language, recurse_patterns)?,
-        })
+            recurse_patterns: Vec::with_capacity(recurse_patterns.len()),
+        };
+        for query_source in match_patterns {
+            let query = compile_query(language, query_source.as_ref())?;
+            result.match_patterns.push(DefinitionPattern {
+                index_name: get_capture_index(
+                    &query,
+                    "name",
+                    query_source.as_ref(),
+                    "match_patterns",
+                )?,
+                index_def: get_capture_index(
+                    &query,
+                    "def",
+                    query_source.as_ref(),
+                    "match_patterns",
+                )?,
+                query,
+            });
+        }
+        for query_source in recurse_patterns {
+            let query = compile_query(language, query_source.as_ref())?;
+            result.recurse_patterns.push(RecursePattern {
+                index_name: get_capture_index(
+                    &query,
+                    "name",
+                    query_source.as_ref(),
+                    "recurse_patterns",
+                )?,
+                query,
+            })
+        }
+        Ok(result)
     }
 }
 

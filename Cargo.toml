@@ -14,7 +14,6 @@ categories = ["command-line-utilities", "development-tools"]
 include = ["/src", "/tests", "/test_cases", "/assets", "/README.md", "/LICENSE", "/dook.svg", "!.ruff_cache"]
 
 [dependencies]
-anyhow = "1"
 base16ct = "0.2.0"
 clap = { version = "4.5.4", features = ["derive", "unicode", "wrap_help"] }
 console = "0.15"
