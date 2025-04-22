@@ -61,6 +61,13 @@ impl MaybePager {
     fn pipe(&mut self) -> Option<&mut std::process::ChildStdin> {
         self.pager.as_mut().and_then(|child| child.stdin.as_mut())
     }
+
+    // convenience function to write a buffer and then a newline
+    pub fn write_line(&mut self, buf: &[u8]) -> std::io::Result<()> {
+        use std::io::Write;
+        self.write_all(buf)
+            .and_then(|_| self.write_all("\n".as_bytes()))
+    }
 }
 
 pub fn is_broken_pipe<T>(result: &std::io::Result<T>) -> bool {

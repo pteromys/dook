@@ -17,6 +17,7 @@ changelog 🧚
   - `--stdin` to search on stdin, gated by `stdin` feature
   - `--only-names` to print matching names but not defs (used for completions)
   - `--offline` to not download anything
+  - `--verbose` to litter console output with unstructured progress messages
 - Fixes:
   - Search patterns with `|` no longer fail to restrict to whole-name match.
   - Catch names bound by destructuring in js, ts, tsx, python.
@@ -25,6 +26,7 @@ changelog 🧚
   - Show parent object names in js/ts/tsx.
 - Cache tree-sitter query compilation for 4x speedup.
 - Add bash and zsh completions.
+- Order search by likely imports to try to get results sooner (python).
 
 ## 0.2.0 (2024-12-14)
 

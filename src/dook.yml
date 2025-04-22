@@ -204,6 +204,12 @@ python:
       (call function: (identifier) @name)
       (call function: (attribute attribute: (identifier) @name))
     ]
+  import_patterns:
+  - |
+    [
+      (import_from_statement module_name: (_) @origin name: (_) @name)
+      (attribute object: (_) @origin attribute: (identifier) @name)
+    ]
 rust:
   parser:
     git:

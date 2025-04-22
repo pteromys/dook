@@ -196,6 +196,7 @@ impl ParsedFile {
 pub struct SearchResult {
     pub ranges: range_union::RangeUnion,
     pub recurse_names: Vec<String>,
+    pub import_origins: Vec<String>,
 }
 
 pub fn end_point_to_end_line(p: tree_sitter::Point) -> usize {
@@ -350,10 +351,37 @@ pub fn find_definition(
             }
         }
     }
+    let mut import_origins: Vec<String> = vec![];
+    for import_pattern in language_info.import_patterns.iter() {
+        cursor
+            .matches(&import_pattern.query, tree.root_node(), source_code)
+            .filter(|query_match| {
+                query_match.captures.iter().any(|capture| {
+                    capture.index == import_pattern.index_name
+                        && pattern.is_match(
+                            std::str::from_utf8(&source_code[capture.node.byte_range()]).unwrap(),
+                        )
+                })
+            })
+            .for_each(|query_match| {
+                import_origins.extend(
+                    query_match
+                        .captures
+                        .iter()
+                        .filter(|capture| capture.index == import_pattern.index_origin)
+                        .map(|capture| {
+                            std::str::from_utf8(&source_code[capture.node.byte_range()])
+                                .unwrap()
+                                .to_owned()
+                        }),
+                )
+            });
+    }
     recurse_names.sort();
     recurse_names.dedup();
     SearchResult {
         ranges,
         recurse_names,
+        import_origins,
     }
 }

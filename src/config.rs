@@ -80,11 +80,12 @@ struct LanguageConfig {
     parent_patterns: std::vec::Vec<String>,
     parent_exclusions: std::vec::Vec<String>,
     recurse_patterns: Option<std::vec::Vec<MultiLineString>>,
+    import_patterns: Option<std::vec::Vec<MultiLineString>>,
     comments: Option<Vec<String>>,
 }
 
 merde::derive! {
-    impl (Deserialize) for struct LanguageConfig { parser, match_patterns, sibling_patterns, parent_patterns, parent_exclusions, recurse_patterns, comments }
+    impl (Deserialize) for struct LanguageConfig { parser, match_patterns, sibling_patterns, parent_patterns, parent_exclusions, recurse_patterns, import_patterns, comments }
 }
 
 #[derive(Debug, PartialEq)]
@@ -371,6 +372,7 @@ impl<'a> QueryCompiler<'a> {
             &language_config.parent_patterns,
             &language_config.parent_exclusions,
             language_config.recurse_patterns.clone().unwrap_or_default(),
+            language_config.import_patterns.clone().unwrap_or_default(),
         ) {
             Ok(x) => Ok(entry.insert(Some(std::rc::Rc::new(x))).clone().unwrap()),
             Err(e) => {
@@ -387,6 +389,7 @@ pub struct LanguageInfo {
     pub parent_patterns: std::vec::Vec<std::num::NonZero<u16>>,
     pub parent_exclusions: std::vec::Vec<std::num::NonZero<u16>>,
     pub recurse_patterns: std::vec::Vec<RecursePattern>,
+    pub import_patterns: std::vec::Vec<ImportPattern>,
 }
 
 pub struct DefinitionPattern {
@@ -400,6 +403,12 @@ pub struct RecursePattern {
     pub index_name: u32,
 }
 
+pub struct ImportPattern {
+    pub query: tree_sitter::Query,
+    pub index_name: u32,
+    pub index_origin: u32,
+}
+
 impl LanguageInfo {
     pub fn new<
         Item1: AsRef<str>,
@@ -407,6 +416,7 @@ impl LanguageInfo {
         Item3: AsRef<str>,
         Item4: AsRef<str>,
         Item5: AsRef<str>,
+        Item6: AsRef<str>,
     >(
         language: &tree_sitter::Language,
         match_patterns: &Vec<Item1>,
@@ -414,6 +424,7 @@ impl LanguageInfo {
         parent_patterns: &Vec<Item3>,
         parent_exclusions: &Vec<Item4>,
         recurse_patterns: Vec<Item5>,
+        import_patterns: Vec<Item6>,
     ) -> Result<Self, GetLanguageInfoError> {
         fn compile_query(
             language: &tree_sitter::Language,
@@ -479,6 +490,7 @@ impl LanguageInfo {
             parent_patterns: resolve_node_types(language, parent_patterns)?,
             parent_exclusions: resolve_field_names(language, parent_exclusions)?,
             recurse_patterns: Vec::with_capacity(recurse_patterns.len()),
+            import_patterns: Vec::with_capacity(import_patterns.len()),
         };
         for query_source in match_patterns {
             let query = compile_query(language, query_source.as_ref())?;
@@ -509,6 +521,24 @@ impl LanguageInfo {
                 )?,
                 query,
             })
+        }
+        for query_source in import_patterns {
+            let query = compile_query(language, query_source.as_ref())?;
+            result.import_patterns.push(ImportPattern {
+                index_name: get_capture_index(
+                    &query,
+                    "name",
+                    query_source.as_ref(),
+                    "import_patterns",
+                )?,
+                index_origin: get_capture_index(
+                    &query,
+                    "origin",
+                    query_source.as_ref(),
+                    "import_patterns",
+                )?,
+                query,
+            });
         }
         Ok(result)
     }
