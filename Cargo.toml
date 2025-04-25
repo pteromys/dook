@@ -11,7 +11,7 @@ repository = "https://github.com/pteromys/dook"
 readme = "README.md"
 keywords = ["search", "grep", "tree-sitter", "code-search"]
 categories = ["command-line-utilities", "development-tools"]
-include = ["/src", "/tests", "/test_cases", "/assets", "/README.md", "/LICENSE", "/dook.svg", "!.ruff_cache"]
+include = ["/.cargo", "/src", "/tests", "/test_cases", "/assets", "/README.md", "/LICENSE", "/dook.svg", "!.ruff_cache"]
 
 [features]
 stdin = []
@@ -35,7 +35,7 @@ regex = "1.11"  # match ripgrep's default engine since we shell out to ripgrep
 sha2 = "0.10.8"
 tempfile = "3"
 tree-sitter = "^0.25"
-tree-sitter-loader = "^0.25"
+tree-sitter-loader = { version = "^0.25", default-features = false, features = ["tree-sitter-highlight"] }
 tree-sitter-python = { version = "0.23.6", optional = true }
 
 [[bin]]
@@ -46,3 +46,10 @@ name = "dook"
 # src/lib.rs only exists for integration tests to link against;
 # don't rerun the unit tests on it since they'll all run for src/main.rs anyway.
 test = false
+
+[profile.release]
+lto = true
+strip = "symbols"
+codegen-units = 1
+
+# rustflags are in ./.cargo/config.toml

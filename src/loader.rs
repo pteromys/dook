@@ -1,5 +1,7 @@
 use crate::language_name::LanguageName;
 
+// Structs
+
 pub struct Loader {
     cache: std::collections::HashMap<ParserSource, Option<std::rc::Rc<tree_sitter::Language>>>,
     loader: tree_sitter_loader::Loader,
@@ -47,6 +49,8 @@ pub struct TarballSource {
 merde::derive! {
     impl (Serialize, Deserialize) for struct TarballSource { name, url, sha256hex, subdirectory }
 }
+
+// Errors
 
 #[derive(Debug)]
 pub enum LoaderError {
@@ -189,6 +193,8 @@ impl From<std::process::ExitStatus> for CalledProcessErrorSource {
         Self::ExitStatus(value)
     }
 }
+
+// Public API
 
 impl Loader {
     pub fn new(
@@ -579,6 +585,7 @@ where
             })?;
         language_fn()
     };
+    // prevent `library` from unloading since it'd invalidate `language`
     std::mem::forget(library);
     Ok(language)
 }
