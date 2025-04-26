@@ -8,10 +8,13 @@ changelog 🧚
   - Compiled parsers go in ~/.cache/tree-sitter/lib.
   - Some parsers can be built in at compile time, using the following features:
     - `static_python`
-- Config file format version 2:
+- Config file format version 3 (never released v2):
   - Add integer "_version" field.
   - Switch to yaml since we use a lot of multi-line strings.
   - Add per-language "parser" field for specifying parser sources.
+  - Change queries to single strings.
+  - All fields are now optional so your config only needs to be overrides of the default.
+  - Parent node types and exclusions are now a query with an optional `@exclude` capture.
 - New CLI options:
   - `--wrap` and `-S` (forwarded to `bat`)
   - `--stdin` to search on stdin, gated by `stdin` feature

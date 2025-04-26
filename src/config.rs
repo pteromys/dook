@@ -1,8 +1,6 @@
 // TODOs
 //     support fenced code blocks in markdown and rst
 //         likely to require regrouping
-//     tree_sitter 0.22 will support alternation of node types, allowing better concision
-//     tree_sitter 0.22 will support context_cursor.set_max_start_depth(0)
 use crate::language_name::LanguageName;
 use crate::loader;
 
@@ -73,7 +71,7 @@ impl<'de> merde::Deserialize<'de> for MultiLineString {
 }
 
 #[derive(Debug, PartialEq)]
-struct LanguageConfig {
+struct LanguageConfigV1 {
     parser: Option<loader::ParserSource>,
     match_patterns: std::vec::Vec<MultiLineString>,
     sibling_patterns: std::vec::Vec<String>,
@@ -85,23 +83,83 @@ struct LanguageConfig {
 }
 
 merde::derive! {
-    impl (Deserialize) for struct LanguageConfig { parser, match_patterns, sibling_patterns, parent_patterns, parent_exclusions, recurse_patterns, import_patterns, comments }
+    impl (Deserialize) for struct LanguageConfigV1 { parser, match_patterns, sibling_patterns, parent_patterns, parent_exclusions, recurse_patterns, import_patterns, comments }
 }
 
 #[derive(Debug, PartialEq)]
-pub struct ConfigV1(std::collections::HashMap<LanguageName, LanguageConfig>);
+struct ConfigV1(std::collections::HashMap<LanguageName, LanguageConfigV1>);
 
 merde::derive! {
     impl (Deserialize) for struct ConfigV1 transparent
 }
 
 #[derive(Debug, PartialEq)]
-pub struct ConfigV2 {
+struct ConfigV2 {
     version: u64,
-    languages: std::collections::HashMap<LanguageName, LanguageConfig>,
+    languages: std::collections::HashMap<LanguageName, LanguageConfigV1>,
 }
 
-merde::impl_into_static!(struct ConfigV2 { version, languages });
+#[derive(Debug, PartialEq)]
+pub struct LanguageConfigV3 {
+    parser: Option<loader::ParserSource>,
+    definition_query: Option<String>,
+    sibling_node_types: Option<std::vec::Vec<String>>,
+    parent_query: Option<String>,
+    recurse_query: Option<String>,
+    import_query: Option<String>,
+}
+
+merde::derive! {
+    impl (Deserialize) for struct LanguageConfigV3 { parser, definition_query, sibling_node_types, parent_query, recurse_query, import_query }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ConfigV3 {
+    version: u64,
+    languages: std::collections::HashMap<LanguageName, LanguageConfigV3>,
+}
+
+merde::impl_into_static!(struct ConfigV3 { version, languages });
+
+fn join_strs(v: Vec<String>, sep: &str) -> String {
+    v.iter()
+        .flat_map(|s| [sep, s].into_iter())
+        .skip(1)
+        .collect()
+}
+
+impl From<LanguageConfigV1> for LanguageConfigV3 {
+    fn from(value: LanguageConfigV1) -> Self {
+        Self {
+            parser: value.parser,
+            definition_query: match value.match_patterns.len() {
+                0 => None,
+                _ => Some(join_strs(
+                    value.match_patterns.iter().map(|s| s.into()).collect(),
+                    "\n",
+                )),
+            },
+            sibling_node_types: Some(value.sibling_patterns),
+            parent_query: match value.parent_patterns.len() {
+                0 => None,
+                _ => Some(join_strs(
+                    value
+                        .parent_patterns
+                        .iter()
+                        .map(|node_name| format!("({})", node_name))
+                        .collect(),
+                    "\n",
+                )),
+            },
+            recurse_query: value
+                .recurse_patterns
+                .map(|v| join_strs(v.iter().map(|s| s.into()).collect(), "\n")),
+            import_query: value
+                .import_patterns
+                .map(|v| join_strs(v.iter().map(|s| s.into()).collect(), "\n")),
+        }
+    }
+}
 
 impl<'de> merde::Deserialize<'de> for ConfigV2 {
     async fn deserialize(
@@ -138,9 +196,45 @@ impl<'de> merde::Deserialize<'de> for ConfigV2 {
     }
 }
 
+impl<'de> merde::Deserialize<'de> for ConfigV3 {
+    async fn deserialize(
+        de: &mut dyn merde::DynDeserializer<'de>,
+    ) -> Result<Self, merde::MerdeError<'de>> {
+        use merde::DynDeserializerExt;
+        let mut result = ConfigV3 {
+            version: 3,
+            languages: std::collections::HashMap::new(),
+        };
+        de.next().await?.into_map_start()?;
+        loop {
+            match de.next().await? {
+                merde::Event::Str(key) => {
+                    if key == "_version" {
+                        result.version = u64::try_from(de.next().await?.into_i64()?)
+                            .map_err(|_| merde::MerdeError::OutOfRange)?;
+                    } else {
+                        de.put_back(merde::Event::Str(key))?;
+                        let key: LanguageName = de.t().await?;
+                        result.languages.insert(key, de.t().await?);
+                    }
+                }
+                merde::Event::MapEnd => return Ok(result),
+                e => {
+                    return Err(merde::MerdeError::UnexpectedEvent {
+                        got: merde::EventType::from(&e),
+                        expected: &[merde::EventType::Str],
+                        help: None,
+                    })
+                }
+            }
+        }
+    }
+}
+
 pub enum ConfigFormat {
     V1,
     V2,
+    V3,
 }
 
 impl<'de> merde::Deserialize<'de> for ConfigFormat {
@@ -155,6 +249,7 @@ impl<'de> merde::Deserialize<'de> for ConfigFormat {
                     if key == "_version" {
                         return match de.next().await?.into_i64()? {
                             2 => Ok(ConfigFormat::V2),
+                            3 => Ok(ConfigFormat::V3),
                             _ => Err(merde::MerdeError::OutOfRange),
                         };
                     }
@@ -170,37 +265,36 @@ impl<'de> merde::Deserialize<'de> for ConfigFormat {
     }
 }
 
-pub use ConfigV2 as Config;
+pub use ConfigV3 as Config;
 
 impl Config {
     pub fn load(
         explicit_path: &Option<impl AsRef<std::path::Path>>,
     ) -> std::io::Result<Option<Self>> {
         use merde::IntoStatic;
-        let file_contents = match explicit_path {
+        let config_bytes = match explicit_path {
             // explicitly requested file paths expose any errors reading
             Some(p) => std::fs::read(p.as_ref())?,
             // the default file path is more forgiving
             None => match default_config_path() {
-                None => return Ok(None),  // if there's no default path, just return None
+                None => return Ok(None), // if there's no default path, just return None
                 Some(default_path) => match std::fs::read(&default_path) {
                     // unwrap the contents if we successfully read it
                     Ok(contents) => contents,
-                    Err(e) => match e.kind() {
-                        // silently eat NotFound
-                        std::io::ErrorKind::NotFound => return Ok(None),
+                    Err(e) => {
+                        // silently eat NotFound---user never created config file
                         // log other errors but don't let them stop us from trying to work in a degraded environment
-                        _ => {
+                        if e.kind() != std::io::ErrorKind::NotFound {
                             log::warn!("Error reading config at {:?}, falling back to built-in default: {:?}", default_path, e);
-                            return Ok(None);
                         }
-                    },
+                        return Ok(None);
+                    }
                 },
             },
-        }.to_ascii_lowercase();
-        let contents_lowercase = std::str::from_utf8(&file_contents)
+        };
+        let config_str = std::str::from_utf8(&config_bytes)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        let deserialize_result = Self::load_from_str(contents_lowercase);
+        let deserialize_result = Self::load_from_str(config_str);
         match deserialize_result {
             Ok(c) => Ok(Some(c.into_static())),
             Err(e) => Err(std::io::Error::new(
@@ -210,19 +304,33 @@ impl Config {
         }
     }
 
-    fn load_from_str(contents_lowercase: &str) -> Result<Self, merde::MerdeError> {
+    fn load_from_str(config_str: &str) -> Result<Self, merde::MerdeError> {
         // first pass to hunt for the config version
-        let config_format: ConfigFormat = merde::yaml::from_str(contents_lowercase)?;
+        let config_format: ConfigFormat = merde::yaml::from_str(config_str)?;
         // second pass depending on version
         match config_format {
             ConfigFormat::V1 => {
-                let ConfigV1(language_configs) = merde::yaml::from_str(contents_lowercase)?;
-                Ok(ConfigV2 {
-                    version: 2,
-                    languages: language_configs,
+                let ConfigV1(language_configs) = merde::yaml::from_str(config_str)?;
+                Ok(ConfigV3 {
+                    version: 3,
+                    languages: language_configs
+                        .into_iter()
+                        .map(|(k, v)| (k, v.into()))
+                        .collect(),
                 })
             }
-            ConfigFormat::V2 => merde::yaml::from_str::<ConfigV2>(contents_lowercase),
+            ConfigFormat::V2 => {
+                let v2 = merde::yaml::from_str::<ConfigV2>(config_str)?;
+                Ok(ConfigV3 {
+                    version: 3,
+                    languages: v2
+                        .languages
+                        .into_iter()
+                        .map(|(k, v)| (k, v.into()))
+                        .collect(),
+                })
+            }
+            ConfigFormat::V3 => merde::yaml::from_str::<ConfigV3>(config_str),
         }
     }
 
@@ -248,20 +356,21 @@ impl Config {
                     if let Some(parser) = language_config.parser {
                         dest_config.parser = Some(parser.clone());
                     }
-                    if !language_config.match_patterns.is_empty() {
-                        dest_config.match_patterns = language_config.match_patterns.clone();
+                    if let Some(x) = language_config.definition_query {
+                        dest_config.definition_query = Some(x.clone());
                     }
-                    if !language_config.sibling_patterns.is_empty() {
-                        dest_config.sibling_patterns = language_config.sibling_patterns.clone();
+                    if let Some(x) = language_config.sibling_node_types {
+                        dest_config.sibling_node_types = Some(x.clone());
                     }
-                    if !language_config.parent_patterns.is_empty() {
-                        dest_config.parent_patterns = language_config.parent_patterns.clone();
+                    if let Some(x) = language_config.parent_query {
+                        dest_config.parent_query = Some(x.clone());
                     }
-                    if !language_config.parent_exclusions.is_empty() {
-                        dest_config.parent_exclusions = language_config.parent_exclusions.clone();
+                    if let Some(x) = language_config.recurse_query {
+                        dest_config.recurse_query = Some(x.clone());
                     }
-                    if let Some(recurse_patterns) = language_config.recurse_patterns {
-                        dest_config.recurse_patterns = Some(recurse_patterns.clone());
+                    if let Some(x) = language_config.import_query {
+                        dest_config.import_query = Some(x.clone());
+                    }
                     }
                     dest_config
                 }
@@ -294,12 +403,12 @@ pub enum GetLanguageInfoError {
         query_error: tree_sitter::QueryError,
     },
     UnrecognizedNodeType(String),
-    UnrecognizedFieldName(String),
     RequiredCaptureMissing {
         query_source: String,
         capture_name: &'static str,
         config_field: &'static str,
     },
+    DefinitionQueryMissing,
 }
 
 #[rustfmt::skip] // keep compact
@@ -324,11 +433,11 @@ impl std::fmt::Display for GetLanguageInfoError {
                 => write!(f, "cannot compile query {:?}: {}", query_source, query_error),
             Self::UnrecognizedNodeType(node_type)
                 => write!(f, "{:?} is not a node type the parser recognizes", node_type),
-            Self::UnrecognizedFieldName(field_name)
-                => write!(f, "{:?} is not a field name the parser recognizes", field_name),
             Self::RequiredCaptureMissing { query_source, capture_name, config_field }
                 => write!(f, "{} requires capturing @{} not found in {:?}",
                           config_field, capture_name, query_source),
+            Self::DefinitionQueryMissing
+                => write!(f, "no config defines definition_query for this language"),
         }
     }
 }
@@ -365,15 +474,7 @@ impl<'a> QueryCompiler<'a> {
             .get_language(language_config.parser.as_ref().unwrap())
             .unwrap()
             .unwrap();
-        match LanguageInfo::new(
-            &language,
-            &language_config.match_patterns,
-            &language_config.sibling_patterns,
-            &language_config.parent_patterns,
-            &language_config.parent_exclusions,
-            language_config.recurse_patterns.clone().unwrap_or_default(),
-            language_config.import_patterns.clone().unwrap_or_default(),
-        ) {
+        match LanguageInfo::new(&language, language_config) {
             Ok(x) => Ok(entry.insert(Some(std::rc::Rc::new(x))).clone().unwrap()),
             Err(e) => {
                 entry.insert(None);
@@ -384,47 +485,39 @@ impl<'a> QueryCompiler<'a> {
 }
 
 pub struct LanguageInfo {
-    pub match_patterns: std::vec::Vec<DefinitionPattern>,
-    pub sibling_patterns: std::vec::Vec<std::num::NonZero<u16>>,
-    pub parent_patterns: std::vec::Vec<std::num::NonZero<u16>>,
-    pub parent_exclusions: std::vec::Vec<std::num::NonZero<u16>>,
-    pub recurse_patterns: std::vec::Vec<RecursePattern>,
-    pub import_patterns: std::vec::Vec<ImportPattern>,
+    pub definition_query: DefinitionQuery,
+    pub sibling_node_types: std::vec::Vec<std::num::NonZero<u16>>,
+    pub parent_query: Option<ParentQuery>,
+    pub recurse_query: Option<RecurseQuery>,
+    pub import_query: Option<ImportQuery>,
 }
 
-pub struct DefinitionPattern {
+pub struct DefinitionQuery {
     pub query: tree_sitter::Query,
     pub index_name: u32,
     pub index_def: u32,
 }
 
-pub struct RecursePattern {
+pub struct ParentQuery {
+    pub query: tree_sitter::Query,
+    pub index_exclude: Option<u32>,
+}
+
+pub struct RecurseQuery {
     pub query: tree_sitter::Query,
     pub index_name: u32,
 }
 
-pub struct ImportPattern {
+pub struct ImportQuery {
     pub query: tree_sitter::Query,
     pub index_name: u32,
     pub index_origin: u32,
 }
 
 impl LanguageInfo {
-    pub fn new<
-        Item1: AsRef<str>,
-        Item2: AsRef<str>,
-        Item3: AsRef<str>,
-        Item4: AsRef<str>,
-        Item5: AsRef<str>,
-        Item6: AsRef<str>,
-    >(
+    pub fn new(
         language: &tree_sitter::Language,
-        match_patterns: &Vec<Item1>,
-        sibling_patterns: &Vec<Item2>,
-        parent_patterns: &Vec<Item3>,
-        parent_exclusions: &Vec<Item4>,
-        recurse_patterns: Vec<Item5>,
-        import_patterns: Vec<Item6>,
+        config: &LanguageConfigV3,
     ) -> Result<Self, GetLanguageInfoError> {
         fn compile_query(
             language: &tree_sitter::Language,
@@ -467,80 +560,83 @@ impl LanguageInfo {
                 })
                 .collect()
         }
-        fn resolve_field_names<Item: AsRef<str>, II: IntoIterator<Item = Item>>(
-            language: &tree_sitter::Language,
-            field_names: II,
-        ) -> Result<std::vec::Vec<std::num::NonZero<u16>>, GetLanguageInfoError> {
-            field_names
-                .into_iter()
-                .map(|field_name| {
-                    language
-                        .field_id_for_name(field_name.as_ref())
-                        .ok_or_else(|| {
-                            GetLanguageInfoError::UnrecognizedFieldName(
-                                field_name.as_ref().to_owned(),
-                            )
-                        })
-                })
-                .collect()
-        }
-        let mut result = Self {
-            match_patterns: Vec::with_capacity(match_patterns.len()),
-            sibling_patterns: resolve_node_types(language, sibling_patterns)?,
-            parent_patterns: resolve_node_types(language, parent_patterns)?,
-            parent_exclusions: resolve_field_names(language, parent_exclusions)?,
-            recurse_patterns: Vec::with_capacity(recurse_patterns.len()),
-            import_patterns: Vec::with_capacity(import_patterns.len()),
+        let definition_query = match &config.definition_query {
+            None => Err(GetLanguageInfoError::DefinitionQueryMissing)?,
+            Some(query_source) => {
+                let query = compile_query(language, query_source.as_ref())?;
+                DefinitionQuery {
+                    index_name: get_capture_index(
+                        &query,
+                        "name",
+                        query_source.as_ref(),
+                        "definition_query",
+                    )?,
+                    index_def: get_capture_index(
+                        &query,
+                        "def",
+                        query_source.as_ref(),
+                        "definition_query",
+                    )?,
+                    query,
+                }
+            }
         };
-        for query_source in match_patterns {
-            let query = compile_query(language, query_source.as_ref())?;
-            result.match_patterns.push(DefinitionPattern {
-                index_name: get_capture_index(
-                    &query,
-                    "name",
-                    query_source.as_ref(),
-                    "match_patterns",
-                )?,
-                index_def: get_capture_index(
-                    &query,
-                    "def",
-                    query_source.as_ref(),
-                    "match_patterns",
-                )?,
-                query,
-            });
-        }
-        for query_source in recurse_patterns {
-            let query = compile_query(language, query_source.as_ref())?;
-            result.recurse_patterns.push(RecursePattern {
-                index_name: get_capture_index(
-                    &query,
-                    "name",
-                    query_source.as_ref(),
-                    "recurse_patterns",
-                )?,
-                query,
-            })
-        }
-        for query_source in import_patterns {
-            let query = compile_query(language, query_source.as_ref())?;
-            result.import_patterns.push(ImportPattern {
-                index_name: get_capture_index(
-                    &query,
-                    "name",
-                    query_source.as_ref(),
-                    "import_patterns",
-                )?,
-                index_origin: get_capture_index(
-                    &query,
-                    "origin",
-                    query_source.as_ref(),
-                    "import_patterns",
-                )?,
-                query,
-            });
-        }
-        Ok(result)
+        let parent_query = match &config.parent_query {
+            None => None,
+            Some(query_source) => {
+                let query = compile_query(language, query_source.as_ref())?;
+                Some(ParentQuery {
+                    index_exclude: query.capture_index_for_name("exclude"),
+                    query,
+                })
+            }
+        };
+        let recurse_query = match &config.recurse_query {
+            None => None,
+            Some(query_source) => {
+                let query = compile_query(language, query_source.as_ref())?;
+                Some(RecurseQuery {
+                    index_name: get_capture_index(
+                        &query,
+                        "name",
+                        query_source.as_ref(),
+                        "recurse_query",
+                    )?,
+                    query,
+                })
+            }
+        };
+        let import_query = match &config.import_query {
+            None => None,
+            Some(query_source) => {
+                let query = compile_query(language, query_source.as_ref())?;
+                Some(ImportQuery {
+                    index_name: get_capture_index(
+                        &query,
+                        "name",
+                        query_source.as_ref(),
+                        "import_query",
+                    )?,
+                    index_origin: get_capture_index(
+                        &query,
+                        "origin",
+                        query_source.as_ref(),
+                        "import_query",
+                    )?,
+                    query,
+                })
+            }
+        };
+        Ok(Self {
+            definition_query,
+            sibling_node_types: match &config.sibling_node_types {
+                None => vec![],
+                Some(v) => resolve_node_types(language, v)?,
+            },
+            parent_query,
+            recurse_query,
+            import_query,
+        })
     }
 }
 
@@ -572,5 +668,33 @@ mod tests {
         )
         .unwrap();
         assert_eq!(v1, v2);
+    }
+
+    #[test]
+    fn v2_vs_v3() {
+        let v2 = Config::load_from_str(
+            r#"{
+            "_version": 2,
+            "python": {
+                "match_patterns": ["(function_definition name: (_) @name) @def"],
+                "sibling_patterns": [],
+                "parent_patterns": [],
+                "parent_exclusions": []
+            }
+        }"#,
+        )
+        .unwrap();
+        let v3 = Config::load_from_str(
+            r#"{
+            "_version": 3,
+            "pYthON": {
+                "definition_query": "(function_definition name: (_) @name) @def",
+                "sibling_node_types": [],
+                "parent_query": null,
+            }
+        }"#,
+        )
+        .unwrap();
+        assert_eq!(v2, v3);
     }
 }

@@ -1,4 +1,4 @@
-_version: 2
+_version: 3
 c:
   parser:
     tarball:
@@ -6,40 +6,38 @@ c:
       sha256hex: e29869ab7ffa2464c938060ebc5b5d2701d2306889e8e4c1fbddb682350f1973
       subdirectory: src
       url: https://github.com/tree-sitter/tree-sitter-c/releases/download/v0.23.5/tree-sitter-c.tar.gz
-  match_patterns:
-  - |
+  definition_query: |
     [
       (preproc_def name: (_) @name)
       (preproc_function_def name: (_) @name)
       (preproc_call directive: (preproc_directive) @undef (#match? @undef "#\\s*undef") argument: (_) @name)
       (struct_specifier name: (_) @name body: (_))
       (type_definition type: (struct_specifier name: (_) @name body: (_)))
-      (type_definition "typedef" type: (_) (type_identifier) @name)
-      (type_definition "typedef" type: (_) (pointer_declarator) @name)
-      (type_definition "typedef" type: (_) (pointer_declarator declarator: (_) @name))
-      (field_declaration declarator: (_) @name)
-      (field_declaration declarator: (pointer_declarator declarator: (_) @name))
-      (field_declaration declarator: (pointer_declarator declarator: (pointer_declarator declarator: (_) @name)))
-      (field_declaration declarator: (pointer_declarator declarator: (pointer_declarator declarator: (pointer_declarator declarator: (_) @name))))
-      (field_declaration declarator: (pointer_declarator declarator: (pointer_declarator declarator: (pointer_declarator declarator: (pointer_declarator declarator: (_) @name)))))
+      (type_definition "typedef" type: (_) [
+        (type_identifier) @name
+        (pointer_declarator) @name
+        (pointer_declarator declarator: (_) @name)])
+      (field_declaration declarator: [
+        (_) @name
+        (pointer_declarator declarator: (_) @name)
+        (pointer_declarator declarator: (pointer_declarator declarator: (_) @name))
+        (pointer_declarator declarator: (pointer_declarator declarator: (pointer_declarator declarator: (_) @name)))
+        (pointer_declarator declarator: (pointer_declarator declarator: (pointer_declarator declarator: (pointer_declarator declarator: (_) @name))))])
       (function_declarator declarator: (_) @name)
-      (function_definition (function_declarator declarator: (_) @name))
-      (function_definition (pointer_declarator declarator: (function_declarator declarator: (_) @name)))
-      (function_definition (pointer_declarator declarator: (pointer_declarator declarator: (function_declarator declarator: (_) @name))))
-      (function_definition (pointer_declarator declarator: (pointer_declarator declarator: (pointer_declarator declarator: (function_declarator declarator: (_) @name)))))
-      (_ declarator: (identifier) @name)
-      (_ declarator: (field_identifier) @name)
-      (_ declarator: (type_identifier) @name)
+      (function_definition [
+        (function_declarator declarator: (_) @name)
+        (pointer_declarator declarator: (function_declarator declarator: (_) @name))
+        (pointer_declarator declarator: (pointer_declarator declarator: (function_declarator declarator: (_) @name)))
+        (pointer_declarator declarator: (pointer_declarator declarator: (pointer_declarator declarator: (function_declarator declarator: (_) @name))))])
+      (_ declarator: [(identifier) (field_identifier) (type_identifier)] @name)
     ] @def
-  sibling_patterns:
+  sibling_node_types:
   - comment
-  parent_patterns:
-  - type_definition
-  - function_declarator
-  - struct_specifier
-  parent_exclusions:
-  - body
-  - type
+  parent_query: |
+    (type_definition type: (_) @exclude)
+    (function_declarator)
+    (function_definition body: (_) @exclude)
+    (struct_specifier body: (_) @exclude)
 cplusplus:
   parser:
     tarball:
@@ -47,41 +45,40 @@ cplusplus:
       sha256hex: 4333032439bef29e71c4d7a8d3acb0c4a498dc9d767980419859ed6fbeeeef29
       subdirectory: src
       url: https://github.com/tree-sitter/tree-sitter-cpp/releases/download/v0.23.4/tree-sitter-cpp.tar.xz
-  match_patterns:
-  - |
+  definition_query: |
     [
       (preproc_def name: (_) @name)
-      (function_declarator declarator: (_) @name)
-      (function_definition declarator: (_ declarator: (_) @name))
-      (function_definition declarator: (_ declarator: (qualified_identifier ("::" (_) @name))))
-      (function_definition declarator: (_ declarator: (qualified_identifier (qualified_identifier ("::" (_) @name)))))
-      (function_definition declarator: (_ declarator: (template_function name: (_) @name)))
+      (function_declarator declarator: [
+        (_) @name
+        (_ declarator: (_) @name)
+        (_ declarator: (qualified_identifier ("::" (_) @name)))
+        (_ declarator: (qualified_identifier (qualified_identifier ("::" (_) @name))))
+        (_ declarator: (template_function name: (_) @name))])
       (struct_specifier name: (_) @name)
-      (_ declarator: (identifier) @name)
-      (_ declarator: (field_identifier) @name)
-      (_ declarator: (type_identifier) @name)
-      (_ declarator: (template_function) @name)
-      (_ declarator: (template_function name: (_) @name))
+      (_ declarator: [
+        (identifier) @name
+        (field_identifier) @name
+        (type_identifier) @name
+        (template_function) @name
+        (template_function name: (_) @name)])
       (namespace_definition name: (_) @name)
       (type_parameter_declaration (type_identifier) @name)
       (class_specifier (type_identifier) @name)
       (field_initializer (field_identifier) @name)
-      (assignment_expression left: (_) @name)
-      (assignment_expression left: (field_expression field: (_) @name))
+      (assignment_expression left: [
+        (_) @name
+        (field_expression field: (_) @name)])
     ] @def
-  sibling_patterns:
+  sibling_node_types:
   - comment
   - template_parameter_list
-  parent_patterns:
-  - namespace_definition
-  - type_definition
-  - function_declarator
-  - function_definition
-  - struct_specifier
-  - class_specifier
-  parent_exclusions:
-  - body
-  - type
+  parent_query: |
+    (namespace_definition body: (_) @exclude)
+    (type_definition type: (_) @exclude)
+    (function_declarator)
+    (function_definition body: (_) @exclude)
+    (struct_specifier body: (_) @exclude)
+    (class_specifier body: (_) @exclude)
 go:
   parser:
     tarball:
@@ -89,8 +86,7 @@ go:
       sha256hex: 33bc3b44de1d7b815f52fe9f42e49786c5833d9181fd59fd6910c19c82559229
       subdirectory: src
       url: https://github.com/tree-sitter/tree-sitter-go/releases/download/v0.23.4/tree-sitter-go.tar.xz
-  match_patterns:
-  - |
+  definition_query: |
     [
       (type_spec name: (_) @name)
       (function_declaration name: (_) @name)
@@ -99,15 +95,12 @@ go:
       (parameter_declaration name: (_) @name)
       (assignment_statement left: (_) @name)
     ] @def
-  sibling_patterns:
+  sibling_node_types:
   - comment
-  parent_patterns:
-  - type_spec
-  - function_declaration
-  - method_declaration
-  parent_exclusions:
-  - body
-  - type
+  parent_query: |
+    (type_spec type: (_) @exclude)
+    (function_declaration body: (_) @exclude)
+    (method_declaration body: (_) @exclude)
 js:
   parser:
     tarball:
@@ -115,8 +108,7 @@ js:
       sha256hex: fc5b8f5a491a6db33ca4854b044b89363ff7615f4291977467f52c1b92a0c032
       subdirectory: tree-sitter-javascript-0.23.1/src
       url: https://github.com/tree-sitter/tree-sitter-javascript/archive/refs/tags/v0.23.1.tar.gz
-  match_patterns:
-  - |
+  definition_query: |
     [
       (variable_declarator name: (_) @name)
       (array_pattern (identifier) @name)
@@ -125,32 +117,31 @@ js:
       (function_declaration name: (_) @name)
       (function_expression name: (_) @name)
       (method_definition name: (_) @name)
-      (formal_parameters (identifier) @name)
-      (formal_parameters (assignment_pattern left: (identifier) @name))
-      (formal_parameters (rest_pattern (identifier) @name))
+      (formal_parameters [
+        (identifier) @name
+        (assignment_pattern left: (identifier) @name)
+        (rest_pattern (identifier) @name)])
       (class_declaration name: (_) @name)
       (field_definition property: (_) @name)
-      (assignment_expression left: (_) @name)
-      (assignment_expression left: (member_expression property: (_) @name))
-      (assignment_expression left: (member_expression object: (_) @name property: ((property_identifier) @prototype (#eq? @prototype "prototype"))))
-      (assignment_expression left: (member_expression object: (member_expression object: (_) @name property: ((property_identifier) @prototype (#eq? @prototype "prototype")))))
-      (pair key: (property_identifier) @name)
-      (pair key: (string (string_fragment) @name))
+      (assignment_expression left: [
+        (_) @name
+        (member_expression property: (_) @name)
+        (member_expression object: (_) @name property: ((property_identifier) @prototype (#eq? @prototype "prototype")))
+        (member_expression object: (member_expression object: (_) @name property: ((property_identifier) @prototype (#eq? @prototype "prototype"))))])
+      (pair key: [
+        (property_identifier) @name
+        (string (string_fragment) @name)])
     ] @def
-  sibling_patterns:
+  sibling_node_types:
   - comment
-  parent_patterns:
-  - function_declaration
-  - function_expression
-  - method_definition
-  - arrow_function
-  - class_declaration
-  - variable_declarator
-  - assignment_expression
-  parent_exclusions:
-  - body
-  - value
-  - right
+  parent_query: |
+    (function_declaration body: (_) @exclude)
+    (function_expression body: (_) @exclude)
+    (method_definition body: (_) @exclude)
+    (arrow_function body: (_) @exclude)
+    (class_declaration body: (_) @exclude)
+    (variable_declarator value: (_) @exclude)
+    (assignment_expression right: (_) @exclude)
 python:
   parser:
     tarball:
@@ -158,66 +149,62 @@ python:
       sha256hex: bc7c1c922b14cb0edd75c0400a63ff260e09bd02684351ed5d38586b5771cd69
       subdirectory: src
       url: https://github.com/tree-sitter/tree-sitter-python/releases/download/v0.23.6/tree-sitter-python.tar.xz
-  match_patterns:
-  - |
+  definition_query: |
     [
-      (class_definition name: (_) @name) @def
-      (function_definition name: (_) @name) @def
-      (decorated_definition (class_definition name: (_) @name)) @def
-      (decorated_definition (function_definition name: (_) @name)) @def
-      (expression_statement (assignment left: (_) @name)) @def
-      (expression_statement (assignment left: (attribute attribute: (_) @name))) @def
-      (expression_statement (assignment left: (subscript subscript: (string (string_content) @name)))) @def
-      (expression_statement (assignment left: (pattern_list (identifier) @name))) @def
-      (dictionary (pair key: (string (string_content) @name)) @def)
-      (parameters (identifier) @name @def)
-      (lambda_parameters (identifier) @name @def)
-      (typed_parameter . (identifier) @name) @def
-      (default_parameter name: (_) @name) @def
-      (typed_default_parameter name: (_) @name) @def
-      (call function: (identifier) @f (#eq? @f "setattr") arguments: (argument_list ("(" (_) "," (string (string_content) @name)))) @def
-      (aliased_import alias: (identifier) @name) @def
-      (as_pattern_target (identifier) @name) @def
-      (for_statement left: (_) @name @def)
-      (for_statement left: (_) @name right: (_) @def)
-      (for_statement left: (pattern_list (identifier) @name) @def)
-      (for_statement left: (pattern_list (identifier) @name) right: (_) @def)
-    ]
-  - |
+      (class_definition name: (_) @name)
+      (function_definition name: (_) @name)
+      (decorated_definition [
+        (class_definition name: (_) @name)
+        (function_definition name: (_) @name)])
+      (expression_statement (assignment left: [
+        (_) @name
+        (attribute attribute: (_) @name)
+        (subscript subscript: (string (string_content) @name))
+        (pattern_list (identifier) @name)
+      ]))
+    ] @def
+    (dictionary (pair key: (string (string_content) @name)) @def)
+    (parameters (identifier) @name @def)
+    (lambda_parameters (identifier) @name @def)
+    (typed_parameter . (identifier) @name) @def
+    (default_parameter name: (_) @name) @def
+    (typed_default_parameter name: (_) @name) @def
+    (call function: (identifier) @f (#eq? @f "setattr") arguments: (argument_list ("(" (_) "," (string (string_content) @name)))) @def
+    (aliased_import alias: (identifier) @name) @def
+    (as_pattern_target (identifier) @name) @def
+    (for_statement left: [
+      (_) @name
+      (pattern_list (identifier) @name)
+    ] @def)
+    (for_statement left: [
+      (_) @name
+      (pattern_list (identifier) @name)
+    ] right: (_) @def)
     (call function: (attribute attribute: (identifier) @f (#any-of? @f "__setattr__" "__setitem__")) arguments: (argument_list ((string (string_content) @name) "," (_) ")"))) @def
-  sibling_patterns:
+  sibling_node_types:
   - decorator
   - comment
-  parent_patterns:
-  - class_definition
-  - function_definition
-  - assignment
-  - import_from_statement
-  - with_statement
-  - for_statement
-  parent_exclusions:
-  - body
-  - right
-  recurse_patterns:
-  - |
-    [
-      (call function: (identifier) @name)
-      (call function: (attribute attribute: (identifier) @name))
-    ]
-  import_patterns:
-  - |
-    [
-      (import_from_statement module_name: (_) @origin name: (_) @name)
-      (attribute object: (_) @origin attribute: (identifier) @name)
-    ]
+  parent_query: |
+    (class_definition body: (_) @exclude)
+    (function_definition body: (_) @exclude)
+    (assignment right: (_) @exclude)
+    (import_from_statement)
+    (with_statement body: (_) @exclude)
+    (for_statement body: (_) @exclude)
+  recurse_query: |
+    (call function: [
+      (identifier) @name
+      (attribute attribute: (identifier) @name)])
+  import_query: |
+    (import_from_statement module_name: (_) @origin name: (_) @name)
+    (attribute object: (_) @origin attribute: (identifier) @name)
 rust:
   parser:
     git:
       clone: https://github.com/tree-sitter/tree-sitter-rust
       commit: 9c84af007b0f144954adb26b3f336495cbb320a7
       subdirectory: src
-  match_patterns:
-  - |
+  definition_query: |
     [
       (function_item name: (_) @name)
       (function_signature_item name: (_) @name)
@@ -227,11 +214,13 @@ rust:
       (const_item name: (_) @name)
       (enum_item name: (_) @name)
       (impl_item type: (_) @name)
-      (impl_item trait: (_) @name)
-      (impl_item trait: (generic_type type: (_) @name))
-      (impl_item trait: (generic_type type: (scoped_identifier name: (_) @name)))
-      (impl_item trait: (generic_type type: (scoped_type_identifier name: (_) @name)))
-      (impl_item trait: (scoped_type_identifier name: (_) @name))
+      (impl_item trait: [
+        (_) @name
+        (generic_type type: [
+          (_) @name
+          (scoped_identifier name: (_) @name)
+          (scoped_type_identifier name: (_) @name)])
+        (scoped_type_identifier name: (_) @name)])
       (macro_definition name: (_) @name)
       (mod_item name: (_) @name)
       (static_item name: (_) @name)
@@ -240,15 +229,13 @@ rust:
       (type_item name: (_) @name)
       (union_item name: (_) @name)
     ] @def
-  sibling_patterns:
+  sibling_node_types:
   - line_comment
   - block_comment
   - attribute_item
-  parent_patterns:
-  - function_item
-  - impl_item
-  parent_exclusions:
-  - body
+  parent_query: |
+    (function_item body: (_) @exclude)
+    (impl_item body: (_) @exclude)
 ts:
   parser:
     tarball:
@@ -256,8 +243,7 @@ ts:
       sha256hex: 2d324af0616a692cc6fcaea35442a816decb2ef0d05242953cb1feb15a5dc72d
       subdirectory: typescript/src
       url: https://github.com/tree-sitter/tree-sitter-typescript/releases/download/v0.23.2/tree-sitter-typescript.tar.xz
-  match_patterns:
-  - |
+  definition_query: |
     [
       (function_signature name: (_) @name)
       (function_declaration name: (_) @name)
@@ -267,50 +253,45 @@ ts:
       (abstract_method_signature name: (_) @name)
       (abstract_class_declaration name: (_) @name)
       (module name: (_) @name)
-      (required_parameter pattern: (identifier) @name)
-      (required_parameter pattern: (rest_pattern (identifier) @name))
+      (required_parameter pattern: [
+        (identifier) @name
+        (rest_pattern (identifier) @name)])
       (variable_declarator name: (_) @name)
       (array_pattern (identifier) @name)
       (pair_pattern value: (identifier) @name)
       (shorthand_property_identifier_pattern) @name
-      (assignment_expression left: (_) @name)
-      (assignment_expression left: (member_expression property: (property_identifier) @name))
-      (assignment_expression left: (member_expression object: (_) @name property: ((property_identifier) @prototype (#eq? @prototype "prototype"))))
-      (assignment_expression left: (member_expression object: (member_expression object: (_) @name property: ((property_identifier) @prototype (#eq? @prototype "prototype")))))
+      (assignment_expression left: [
+        (_) @name
+        (member_expression property: (_) @name)
+        (member_expression object: (_) @name property: ((property_identifier) @prototype (#eq? @prototype "prototype")))
+        (member_expression object: (member_expression object: (_) @name property: ((property_identifier) @prototype (#eq? @prototype "prototype"))))])
       (class_declaration name: (_) @name)
       (type_alias_declaration name: (_) @name)
       (interface_declaration name: (_) @name)
       (enum_declaration name: (_) @name)
       (enum_assignment name: (_) @name)
-      (_ key: (property_identifier) @name value: (_))
-      (_ key: (property_identifier) @name type: (_))
-      (_ key: (string (string_fragment) @name) value: (_))
-      (_ key: (string (string_fragment) @name) type: (_))
+      (_ key: [(property_identifier) @name (string (string_fragment) @name)] value: (_))
+      (_ key: [(property_identifier) @name (string (string_fragment) @name)] type: (_))
       (property_signature (property_identifier) @name)
       (public_field_definition name: (property_identifier) @name)
       (import_statement (import_clause (named_imports (import_specifier alias: (_) @name))))
       (export_statement (export_clause (export_specifier alias: (_) @name)))
     ] @def
-  - (enum_body (property_identifier) @name @def)
-  sibling_patterns:
+    (enum_body (property_identifier) @name @def)
+  sibling_node_types:
   - comment
-  parent_patterns:
-  - function_declaration
-  - method_definition
-  - arrow_function
-  - class_declaration
-  - type_alias_declaration
-  - interface_declaration
-  - enum_declaration
-  - property_signature
-  - pair
-  - variable_declarator
-  - assignment_expression
-  parent_exclusions:
-  - body
-  - value
-  - type
-  - right
+  parent_query: |
+    (function_declaration body: (_) @exclude)
+    (method_definition body: (_) @exclude)
+    (arrow_function body: (_) @exclude)
+    (class_declaration body: (_) @exclude)
+    (type_alias_declaration value: (_) @exclude)
+    (interface_declaration body: (_) @exclude)
+    (enum_declaration body: (_) @exclude)
+    (property_signature type: (_) @exclude)
+    (pair value: (_) @exclude)
+    (variable_declarator value: (_) @exclude)
+    (assignment_expression right: (_) @exclude)
 tsx:
   parser:
     tarball:
@@ -318,8 +299,7 @@ tsx:
       sha256hex: 2d324af0616a692cc6fcaea35442a816decb2ef0d05242953cb1feb15a5dc72d
       subdirectory: tsx/src
       url: https://github.com/tree-sitter/tree-sitter-typescript/releases/download/v0.23.2/tree-sitter-typescript.tar.xz
-  match_patterns:
-  - |
+  definition_query: |
     [
       (function_signature name: (_) @name)
       (function_declaration name: (_) @name)
@@ -329,49 +309,44 @@ tsx:
       (abstract_method_signature name: (_) @name)
       (abstract_class_declaration name: (_) @name)
       (module name: (_) @name)
-      (required_parameter pattern: (identifier) @name)
-      (required_parameter pattern: (rest_pattern (identifier) @name))
+      (required_parameter pattern: [
+        (identifier) @name
+        (rest_pattern (identifier) @name)])
       (variable_declarator name: (_) @name)
       (array_pattern (identifier) @name)
       (pair_pattern value: (identifier) @name)
       (shorthand_property_identifier_pattern) @name
-      (assignment_expression left: (_) @name)
-      (assignment_expression left: (member_expression property: (property_identifier) @name))
-      (assignment_expression left: (member_expression object: (_) @name property: ((property_identifier) @prototype (#eq? @prototype "prototype"))))
-      (assignment_expression left: (member_expression object: (member_expression object: (_) @name property: ((property_identifier) @prototype (#eq? @prototype "prototype")))))
+      (assignment_expression left: [
+        (_) @name
+        (member_expression property: (_) @name)
+        (member_expression object: (_) @name property: ((property_identifier) @prototype (#eq? @prototype "prototype")))
+        (member_expression object: (member_expression object: (_) @name property: ((property_identifier) @prototype (#eq? @prototype "prototype"))))])
       (class_declaration name: (_) @name)
       (type_alias_declaration name: (_) @name)
       (interface_declaration name: (_) @name)
       (enum_declaration name: (_) @name)
       (enum_assignment name: (_) @name)
-      (_ key: (property_identifier) @name value: (_))
-      (_ key: (property_identifier) @name type: (_))
-      (_ key: (string (string_fragment) @name) value: (_))
-      (_ key: (string (string_fragment) @name) type: (_))
+      (_ key: [(property_identifier) @name (string (string_fragment) @name)] value: (_))
+      (_ key: [(property_identifier) @name (string (string_fragment) @name)] type: (_))
       (jsx_attribute (property_identifier) @name)
       (property_signature (property_identifier) @name)
       (public_field_definition name: (property_identifier) @name)
       (import_statement (import_clause (named_imports (import_specifier alias: (_) @name))))
       (export_statement (export_clause (export_specifier alias: (_) @name)))
     ] @def
-  - (enum_body (property_identifier) @name @def)
-  sibling_patterns:
+    (enum_body (property_identifier) @name @def)
+  sibling_node_types:
   - comment
-  parent_patterns:
-  - function_declaration
-  - method_definition
-  - class_declaration
-  - arrow_function
-  - type_alias_declaration
-  - interface_declaration
-  - enum_declaration
-  - property_signature
-  - pair
-  - variable_declarator
-  - assignment_expression
-  - jsx_opening_element
-  parent_exclusions:
-  - body
-  - value
-  - type
-  - right
+  parent_query: |
+    (function_declaration body: (_) @exclude)
+    (method_definition body: (_) @exclude)
+    (arrow_function body: (_) @exclude)
+    (class_declaration body: (_) @exclude)
+    (type_alias_declaration value: (_) @exclude)
+    (interface_declaration body: (_) @exclude)
+    (enum_declaration body: (_) @exclude)
+    (property_signature type: (_) @exclude)
+    (pair value: (_) @exclude)
+    (variable_declarator value: (_) @exclude)
+    (assignment_expression right: (_) @exclude)
+    (jsx_opening_element attribute: (_) @exclude)

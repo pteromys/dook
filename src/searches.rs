@@ -216,23 +216,25 @@ pub fn find_names(
     use tree_sitter::StreamingIterator;
     let mut cursor = tree_sitter::QueryCursor::new();
     let mut names: std::vec::Vec<String> = std::vec::Vec::new();
-    for def_pattern in language_info.match_patterns.iter() {
-        let mut matches = cursor.matches(&def_pattern.query, tree.root_node(), source_code);
-        while let Some(query_match) = matches.next() {
-            names.extend(query_match.captures.iter().filter_map(|capture| {
-                if capture.index != def_pattern.index_name {
-                    return None;
-                }
-                let name = std::str::from_utf8(&source_code[capture.node.byte_range()])
-                    .unwrap()
-                    .to_owned();
-                if pattern.is_match(&name) {
-                    Some(name)
-                } else {
-                    None
-                }
-            }));
-        }
+    let mut matches = cursor.matches(
+        &language_info.definition_query.query,
+        tree.root_node(),
+        source_code,
+    );
+    while let Some(query_match) = matches.next() {
+        names.extend(query_match.captures.iter().filter_map(|capture| {
+            if capture.index != language_info.definition_query.index_name {
+                return None;
+            }
+            let name = std::str::from_utf8(&source_code[capture.node.byte_range()])
+                .unwrap()
+                .to_owned();
+            if pattern.is_match(&name) {
+                Some(name)
+            } else {
+                None
+            }
+        }));
     }
     names.dedup(); // lol idk
     names.sort();
@@ -252,98 +254,102 @@ pub fn find_definition(
     let mut cursor = tree_sitter::QueryCursor::new();
     let mut recurse_cursor = tree_sitter::QueryCursor::new();
     let mut recurse_names: std::vec::Vec<String> = std::vec::Vec::new();
-    //let mut context_cursor = tree_sitter::QueryCursor::new();
-    //context_cursor.set_max_start_depth(0);
-    for def_pattern in language_info.match_patterns.iter() {
-        let mut matches = cursor
-            .matches(&def_pattern.query, tree.root_node(), source_code)
-            .filter(|query_match| {
-                query_match.captures.iter().any(|capture| {
-                    capture.index == def_pattern.index_name
-                        && pattern.is_match(
-                            std::str::from_utf8(&source_code[capture.node.byte_range()]).unwrap(),
-                        )
-                })
-            });
-        while let Some(query_match) = matches.next() {
-            for capture in query_match
-                .captures
-                .iter()
-                .filter(|capture| capture.index == def_pattern.index_def)
-            {
-                let mut node = capture.node;
-                ranges.push(
-                    node.range().start_point.row..end_point_to_end_line(node.range().end_point),
-                );
-                // find names to look up for recursion
-                if recurse {
-                    for recurse_pattern in language_info.recurse_patterns.iter() {
-                        let mut recurse_matches =
-                            recurse_cursor.matches(&recurse_pattern.query, node, source_code);
-                        while let Some(recurse_match) = recurse_matches.next() {
-                            for recurse_capture in
-                                recurse_match.captures.iter().filter(|recurse_capture| {
-                                    recurse_capture.index == recurse_pattern.index_name
-                                })
-                            {
-                                let recurse_name = std::str::from_utf8(
-                                    &source_code[recurse_capture.node.byte_range()],
-                                )
-                                .unwrap();
-                                recurse_names.push(String::from(recurse_name));
-                            }
+    let mut context_cursor = tree_sitter::QueryCursor::new();
+    context_cursor.set_max_start_depth(Some(0));
+    let mut matches = cursor
+        .matches(
+            &language_info.definition_query.query,
+            tree.root_node(),
+            source_code,
+        )
+        .filter(|query_match| {
+            query_match.captures.iter().any(|capture| {
+                capture.index == language_info.definition_query.index_name
+                    && pattern.is_match(
+                        std::str::from_utf8(&source_code[capture.node.byte_range()]).unwrap(),
+                    )
+            })
+        });
+    while let Some(query_match) = matches.next() {
+        for capture in query_match
+            .captures
+            .iter()
+            .filter(|capture| capture.index == language_info.definition_query.index_def)
+        {
+            let mut node = capture.node;
+            ranges
+                .push(node.range().start_point.row..end_point_to_end_line(node.range().end_point));
+            // find names to look up for recursion
+            if recurse {
+                if let Some(recurse_query) = &language_info.recurse_query {
+                    let mut recurse_matches =
+                        recurse_cursor.matches(&recurse_query.query, node, source_code);
+                    while let Some(recurse_match) = recurse_matches.next() {
+                        for recurse_capture in
+                            recurse_match.captures.iter().filter(|recurse_capture| {
+                                recurse_capture.index == recurse_query.index_name
+                            })
+                        {
+                            let recurse_name = std::str::from_utf8(
+                                &source_code[recurse_capture.node.byte_range()],
+                            )
+                            .unwrap();
+                            recurse_names.push(String::from(recurse_name));
                         }
                     }
                 }
-                // include preceding neighbors as context while they remain relevant
-                // such as comments, python decorators, rust attributes, and c++ template arguments
-                let mut last_ambiguously_attached_sibling_range: Option<std::ops::Range<usize>> =
-                    None;
-                while let Some(sibling) = node.prev_sibling() {
-                    if match std::num::NonZero::new(sibling.kind_id()) {
-                        None => false,
-                        Some(kind_id) => language_info.sibling_patterns.contains(&kind_id),
-                    } {
-                        let new_sibling_range = sibling.range().start_point.row
-                            ..end_point_to_end_line(sibling.range().end_point);
-                        if let Some(r) = last_ambiguously_attached_sibling_range {
-                            ranges.push(r);
-                        }
-                        last_ambiguously_attached_sibling_range = Some(new_sibling_range);
-                        node = sibling;
-                    } else {
-                        if let Some(r) = last_ambiguously_attached_sibling_range {
-                            let sibling_end_line = end_point_to_end_line(sibling.range().end_point);
-                            if sibling_end_line < r.end {
-                                ranges.push(sibling_end_line.max(r.start)..r.end);
-                            }
-                            last_ambiguously_attached_sibling_range = None;
-                        }
-                        break;
+            }
+            // include preceding neighbors as context while they remain relevant
+            // such as comments, python decorators, rust attributes, and c++ template arguments
+            let mut last_ambiguously_attached_sibling_range: Option<std::ops::Range<usize>> = None;
+            while let Some(sibling) = node.prev_sibling() {
+                if match std::num::NonZero::new(sibling.kind_id()) {
+                    None => false,
+                    Some(kind_id) => language_info.sibling_node_types.contains(&kind_id),
+                } {
+                    let new_sibling_range = sibling.range().start_point.row
+                        ..end_point_to_end_line(sibling.range().end_point);
+                    if let Some(r) = last_ambiguously_attached_sibling_range {
+                        ranges.push(r);
                     }
+                    last_ambiguously_attached_sibling_range = Some(new_sibling_range);
+                    node = sibling;
+                } else {
+                    if let Some(r) = last_ambiguously_attached_sibling_range {
+                        let sibling_end_line = end_point_to_end_line(sibling.range().end_point);
+                        if sibling_end_line < r.end {
+                            ranges.push(sibling_end_line.max(r.start)..r.end);
+                        }
+                        last_ambiguously_attached_sibling_range = None;
+                    }
+                    break;
                 }
-                if let Some(r) = last_ambiguously_attached_sibling_range {
-                    ranges.push(r);
-                }
-                // then include a header line from each relevant ancestor
+            }
+            if let Some(r) = last_ambiguously_attached_sibling_range {
+                ranges.push(r);
+            }
+            // then include a header line from each relevant ancestor
+            if let Some(parent_query) = &language_info.parent_query {
                 while let Some(parent) = node.parent() {
                     // TODO interval arithmetic
-                    if match std::num::NonZero::new(parent.kind_id()) {
-                        None => false,
-                        Some(kind_id) => language_info.parent_patterns.contains(&kind_id),
-                    } {
-                        let context_start = parent.range().start_point.row;
-                        let context_end = language_info
-                            .parent_exclusions
+                    let mut parent_matches =
+                        context_cursor.matches(&parent_query.query, parent, source_code);
+                    let context_start = parent.range().start_point.row;
+                    let mut context_end = parent.range().end_point;
+                    let mut matched = false;
+                    while let Some(parent_match) = parent_matches.next() {
+                        for capture in parent_match
+                            .captures
                             .iter()
-                            .filter_map(|field_id| {
-                                parent
-                                    .child_by_field_id((*field_id).get())
-                                    .and_then(|c| c.prev_sibling())
-                            })
-                            .map(|c| c.range().end_point)
-                            .min()
-                            .unwrap_or(parent.range().end_point);
+                            .filter(|c| Some(c.index) == parent_query.index_exclude)
+                        {
+                            if let Some(prev) = capture.node.prev_sibling() {
+                                context_end = context_end.min(prev.range().end_point);
+                            }
+                        }
+                        matched = true;
+                    }
+                    if matched {
                         ranges.push(context_start..end_point_to_end_line(context_end));
                     }
                     node = parent;
@@ -352,12 +358,12 @@ pub fn find_definition(
         }
     }
     let mut import_origins: Vec<String> = vec![];
-    for import_pattern in language_info.import_patterns.iter() {
+    if let Some(import_query) = &language_info.import_query {
         cursor
-            .matches(&import_pattern.query, tree.root_node(), source_code)
+            .matches(&import_query.query, tree.root_node(), source_code)
             .filter(|query_match| {
                 query_match.captures.iter().any(|capture| {
-                    capture.index == import_pattern.index_name
+                    capture.index == import_query.index_name
                         && pattern.is_match(
                             std::str::from_utf8(&source_code[capture.node.byte_range()]).unwrap(),
                         )
@@ -368,7 +374,7 @@ pub fn find_definition(
                     query_match
                         .captures
                         .iter()
-                        .filter(|capture| capture.index == import_pattern.index_origin)
+                        .filter(|capture| capture.index == import_query.index_origin)
                         .map(|capture| {
                             std::str::from_utf8(&source_code[capture.node.byte_range()])
                                 .unwrap()
