@@ -236,6 +236,10 @@ rust:
   parent_query: |
     (function_item body: (_) @exclude)
     (impl_item body: (_) @exclude)
+  injection_query: |
+    (macro_invocation
+      (token_tree) @injection.content
+      (#set! injection.language "Rust"))
 ts:
   parser:
     tarball:

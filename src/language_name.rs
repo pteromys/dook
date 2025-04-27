@@ -71,16 +71,36 @@ impl merde::Serialize for LanguageName {
 
 impl LanguageName {
     pub fn from_hyperpolyglot(hyperpolyglot_name: &str) -> Option<Self> {
-        Some(match hyperpolyglot_name {
-            "Rust" => Self::Rust,
-            "Python" => Self::Python,
-            "JavaScript" => Self::Js,
-            "TypeScript" => Self::Ts,
-            "TSX" => Self::Tsx,
-            "C" => Self::C,
-            "C++" => Self::CPlusPlus,
-            "Go" => Self::Go,
+        let lowercase_name = hyperpolyglot_name.to_lowercase();
+        Some(match lowercase_name.as_ref() {
+            "rust" => Self::Rust,
+            "python" => Self::Python,
+            "javascript" => Self::Js,
+            "typescript" => Self::Ts,
+            "tsx" => Self::Tsx,
+            "c" => Self::C,
+            "c++" => Self::CPlusPlus,
+            "go" => Self::Go,
             _ => return None,
         })
+    }
+}
+
+impl std::fmt::Display for LanguageName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Rust => "Rust",
+                Self::Python => "Python",
+                Self::Js => "JavaScript",
+                Self::Ts => "TypeScript",
+                Self::Tsx => "TSX",
+                Self::C => "C",
+                Self::CPlusPlus => "C++",
+                Self::Go => "Go",
+            }
+        )
     }
 }

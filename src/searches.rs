@@ -1,193 +1,105 @@
 use crate::language_name::LanguageName;
-use crate::{config, loader, range_union};
-use enum_derive_2018::EnumFromInner;
+use crate::{config, range_union};
 
 pub struct ParsedFile {
-    pub path: Option<std::path::PathBuf>,
     pub language_name: LanguageName,
-    pub language_name_str: String,
-    pub source_code: std::vec::Vec<u8>,
     pub tree: tree_sitter::Tree,
 }
 
-macro_attr_2018::macro_attr! {
-    #[derive(Debug, Clone, EnumFromInner!)]
-    pub enum FileParseError {
-        UnknownLanguage(UnknownLanguageError),
-        UnsupportedLanguage(UnsupportedLanguageError),
-        FailedToAttachLanguage(FailedToAttachLanguageError), // probably version mismatch
-        UnreadableFile(UnreadableFileError),
-        EmptyStdin(()),
-    }
+#[derive(Debug, Clone)]
+pub enum FileParseError {
+    UnknownLanguage,
+    UnsupportedLanguage(String),
+    FailedToAttachLanguage {
+        // probably version mismatch
+        language_name: LanguageName,
+        message: String,
+    },
+    UnreadableFile(String),
+    EmptyStdin,
+    InvalidFileRange {
+        range: tree_sitter::Range,
+        message: String,
+    },
 }
 
+#[rustfmt::skip]
 impl std::fmt::Display for FileParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FileParseError::UnknownLanguage(e) => write!(f, "{}", e),
-            FileParseError::UnsupportedLanguage(e) => write!(f, "{}", e),
-            FileParseError::FailedToAttachLanguage(e) => write!(f, "{}", e),
-            FileParseError::UnreadableFile(e) => write!(f, "{}", e),
-            FileParseError::EmptyStdin(()) => write!(f, "stdin is empty"),
+            FileParseError::UnknownLanguage => write!(f, "unknown language"),
+            FileParseError::UnsupportedLanguage(language_name)
+                => write!(f, "unsupported language {:?}", language_name),
+            FileParseError::FailedToAttachLanguage { language_name, message}
+                => write!(f, "language {:?} incompatible with parser: {:?}", language_name, message),
+            FileParseError::UnreadableFile(message) => write!(f, "{}", message),
+            FileParseError::EmptyStdin => write!(f, "stdin is empty"),
+            FileParseError::InvalidFileRange { range, message }
+                => write!(f, "tree_sitter rejected range restriction {:?}: {}", range, message),
         }
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct UnknownLanguageError {
-    pub path: std::path::PathBuf,
+pub fn detect_language_from_path(path: &std::path::Path) -> Result<LanguageName, FileParseError> {
+    let language_name_str = hyperpolyglot::detect(path)
+        .map_err(|e| FileParseError::UnreadableFile(e.to_string()))?
+        .ok_or(FileParseError::UnknownLanguage)?
+        .language();
+    LanguageName::from_hyperpolyglot(language_name_str)
+        .ok_or_else(|| FileParseError::UnsupportedLanguage(language_name_str.to_owned()))
 }
 
-impl std::fmt::Display for UnknownLanguageError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "unknown language in file at {:?}", self.path)
-    }
+#[cfg(feature = "stdin")]
+pub fn detect_language_from_bytes(bytes: &[u8]) -> Result<LanguageName, FileParseError> {
+    use core::str;
+    let language_name_str = hyperpolyglot::detectors::classify(
+        str::from_utf8(bytes).map_err(|e| FileParseError::UnreadableFile(e.to_string()))?,
+        &[],
+    );
+    LanguageName::from_hyperpolyglot(language_name_str)
+        .ok_or_else(|| FileParseError::UnsupportedLanguage(language_name_str.to_owned()))
 }
 
-#[derive(Debug, Clone)]
-pub struct UnsupportedLanguageError {
-    pub language: String,
-    pub path: Option<std::path::PathBuf>,
-}
-
-impl std::fmt::Display for UnsupportedLanguageError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "unsupported language {:?}", self.language)?;
-        match &self.path {
-            Some(path) => write!(f, " in file at {:?}", path),
-            None => write!(f, " in input"),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct FailedToAttachLanguageError {
-    language: LanguageName,
-    message: String,
-}
-
-impl std::fmt::Display for FailedToAttachLanguageError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "language {:?} incompatible with parser: {:?}",
-            self.language, self.message
-        )
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct UnreadableFileError {
-    pub message: String,
-    pub path: Option<std::path::PathBuf>,
-}
-
-impl std::fmt::Display for UnreadableFileError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.path {
-            Some(path) => write!(f, "cannot read {:?}: {:?}", path, self.message),
-            None => write!(f, "cannot read input: {:?}", self.message),
-        }
-    }
+#[cfg(not(feature = "stdin"))]
+pub fn detect_language_from_bytes(_: &[u8]) -> Result<LanguageName, FileParseError> {
+    Err(FileParseError::UnknownLanguage)
 }
 
 impl ParsedFile {
-    pub fn from_filename(
-        path: &std::path::Path,
-        language_loader: &mut loader::Loader,
-        config: &config::Config,
-    ) -> Result<ParsedFile, FileParseError> {
-        // TODO 0: add more languages
-        // TODO 1: support embeds
-        // TODO 2: group by language and do a second pass with language-specific regexes?
-        // strings from https://github.com/monkslc/hyperpolyglot/blob/master/languages.yml
-        let language_name_str = hyperpolyglot::detect(path)
-            .map_err(|e| UnreadableFileError {
-                message: e.to_string(),
-                path: Some(path.to_owned()),
-            })?
-            .ok_or_else(|| UnknownLanguageError {
-                path: path.to_owned(),
-            })?
-            .language();
-        let source_code = std::fs::read(path).map_err(|e| UnreadableFileError {
-            message: e.to_string(),
-            path: Some(path.to_owned()),
-        })?;
-        let mut result = Self::from_bytes_and_language_name(
-            source_code,
-            language_name_str,
-            language_loader,
-            config,
-        );
-        if let Ok(f) = &mut result {
-            f.path = Some(path.to_owned());
-        }
-        if let Err(FileParseError::UnsupportedLanguage(e)) = &mut result {
-            e.path = Some(path.to_owned());
-        }
-        result
-    }
-
-    #[cfg(feature = "stdin")]
-    pub fn from_bytes(
-        source_code: Vec<u8>,
-        language_loader: &mut loader::Loader,
-        config: &config::Config,
-    ) -> Result<ParsedFile, FileParseError> {
-        use core::str;
-        let language_name_str = hyperpolyglot::detectors::classify(
-            str::from_utf8(&source_code).map_err(|e| UnreadableFileError {
-                message: e.to_string(),
-                path: None,
-            })?,
-            &[],
-        );
-        Self::from_bytes_and_language_name(source_code, language_name_str, language_loader, config)
-    }
-
-    fn from_bytes_and_language_name(
-        source_code: Vec<u8>,
-        language_name_str: &str,
-        language_loader: &mut loader::Loader,
-        config: &config::Config,
-    ) -> Result<ParsedFile, FileParseError> {
-        let language_name =
-            LanguageName::from_hyperpolyglot(language_name_str).ok_or_else(|| {
-                UnsupportedLanguageError {
-                    language: language_name_str.to_owned(),
-                    path: None,
-                }
-            })?;
-        let language = language_loader
-            .get_language(config.get_parser_source(language_name).unwrap())
-            .unwrap()
-            .unwrap();
-        let mut result = Self::from_bytes_and_language(source_code, language_name, &language)?;
-        result.language_name_str = language_name_str.to_owned();
-        Ok(result)
-    }
-
     pub fn from_bytes_and_language(
-        source_code: Vec<u8>,
+        source_code: &[u8],
         language_name: LanguageName,
         language: &tree_sitter::Language,
-    ) -> Result<ParsedFile, FileParseError> {
+    ) -> Result<Self, FileParseError> {
+        Self::from_bytes_and_language_ranged(source_code, language_name, language, None)
+    }
+
+    pub fn from_bytes_and_language_ranged(
+        source_code: &[u8],
+        language_name: LanguageName,
+        language: &tree_sitter::Language,
+        range: Option<tree_sitter::Range>,
+    ) -> Result<Self, FileParseError> {
         let mut parser = tree_sitter::Parser::new();
         parser
             .set_language(language)
-            .map_err(|e| FailedToAttachLanguageError {
-                language: language_name,
-                message: format!("{}", e),
+            .map_err(|e| FileParseError::FailedToAttachLanguage {
+                language_name,
+                message: e.to_string(),
             })?;
+        if let Some(range) = range {
+            parser
+                .set_included_ranges(&[range])
+                .map_err(|e| FileParseError::InvalidFileRange {
+                    range,
+                    message: e.to_string(),
+                })?;
+        }
         let tree = parser
-            .parse(&source_code, None)
+            .parse(source_code, None)
             .expect("parse() should have returned a tree if parser.set_language() was called");
-        Ok(ParsedFile {
-            path: None,
+        Ok(Self {
             language_name,
-            language_name_str: format!("{:?}", language_name),
-            source_code,
             tree,
         })
     }
@@ -197,6 +109,12 @@ pub struct SearchResult {
     pub ranges: range_union::RangeUnion,
     pub recurse_names: Vec<String>,
     pub import_origins: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct InjectionRange {
+    pub range: tree_sitter::Range,
+    pub language_hint: Option<String>,
 }
 
 pub fn end_point_to_end_line(p: tree_sitter::Point) -> usize {
@@ -390,4 +308,55 @@ pub fn find_definition(
         recurse_names,
         import_origins,
     }
+}
+
+pub fn find_injections(
+    source_code: &[u8],
+    tree: &tree_sitter::Tree,
+    language_info: &config::LanguageInfo,
+    pattern: &regex::Regex,
+) -> Vec<InjectionRange> {
+    use tree_sitter::StreamingIterator;
+    let mut cursor = tree_sitter::QueryCursor::new();
+    let mut injections: Vec<InjectionRange> = vec![];
+    if let Some(injection_query) = &language_info.injection_query {
+        cursor
+            .matches(&injection_query.query, tree.root_node(), source_code)
+            .for_each(|query_match| {
+                let pattern_index = query_match.pattern_index;
+                let language_hint = match injection_query
+                    .language_hints_by_pattern_index
+                    .get(pattern_index)
+                {
+                    None => None,
+                    Some(config::InjectionLanguageHint::Absent) => None,
+                    Some(config::InjectionLanguageHint::Fixed(s)) => Some(s.as_ref()),
+                    Some(config::InjectionLanguageHint::Capture(capture_index)) => query_match
+                        .captures
+                        .get(*capture_index)
+                        .and_then(|c| std::str::from_utf8(&source_code[c.node.byte_range()]).ok()),
+                };
+                injections.extend(
+                    query_match
+                        .captures
+                        .iter()
+                        .filter(|capture| {
+                            if capture.index != injection_query.index_range {
+                                return false;
+                            }
+                            let Ok(substring) =
+                                std::str::from_utf8(&source_code[capture.node.byte_range()])
+                            else {
+                                return false;
+                            };
+                            pattern.is_match(substring)
+                        })
+                        .map(|capture| InjectionRange {
+                            range: capture.node.range(),
+                            language_hint: language_hint.map(|s| s.to_owned()),
+                        }),
+                )
+            });
+    }
+    injections
 }

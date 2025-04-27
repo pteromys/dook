@@ -8,6 +8,8 @@ changelog 🧚
   - Compiled parsers go in ~/.cache/tree-sitter/lib.
   - Some parsers can be built in at compile time, using the following features:
     - `static_python`
+- Support injections (embedded fragments in another language):
+  - rust inside rust macros
 - Config file format version 3 (never released v2):
   - Add integer "_version" field.
   - Switch to yaml since we use a lot of multi-line strings.

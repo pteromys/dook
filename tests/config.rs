@@ -13,8 +13,13 @@ fn default_patterns_are_loadable() {
     let default_config = Config::load_default();
     let mut query_compiler = QueryCompiler::new(&default_config);
     for language_name in LanguageName::iter_variants() {
+        let parser_source = default_config.get_parser_source(language_name).unwrap();
+        let language = language_loader
+            .get_language(parser_source)
+            .unwrap()
+            .unwrap();
         query_compiler
-            .get_language_info(language_name, &mut language_loader)
+            .get_language_info(language_name, &language)
             .unwrap();
     }
 }

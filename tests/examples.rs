@@ -18,9 +18,14 @@ fn verify_examples(language_name: LanguageName, source: &[u8], cases: &[TestCase
             "should have called tree_sitter_loader::Loader::with_parser_lib_path(), not new()",
         );
 
+    let parser_source = config.get_parser_source(language_name).unwrap();
+    let language = language_loader
+        .get_language(parser_source)
+        .unwrap()
+        .unwrap();
     let mut query_compiler = QueryCompiler::new(&config);
     let language_info = query_compiler
-        .get_language_info(language_name, &mut language_loader)
+        .get_language_info(language_name, &language)
         .unwrap();
     let mut parser = tree_sitter::Parser::new();
     parser

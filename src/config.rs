@@ -107,10 +107,11 @@ pub struct LanguageConfigV3 {
     parent_query: Option<String>,
     recurse_query: Option<String>,
     import_query: Option<String>,
+    injection_query: Option<String>,
 }
 
 merde::derive! {
-    impl (Deserialize) for struct LanguageConfigV3 { parser, definition_query, sibling_node_types, parent_query, recurse_query, import_query }
+    impl (Deserialize) for struct LanguageConfigV3 { parser, definition_query, sibling_node_types, parent_query, recurse_query, import_query, injection_query }
 }
 
 #[derive(Debug, PartialEq)]
@@ -157,6 +158,7 @@ impl From<LanguageConfigV1> for LanguageConfigV3 {
             import_query: value
                 .import_patterns
                 .map(|v| join_strs(v.iter().map(|s| s.into()).collect(), "\n")),
+            injection_query: None,
         }
     }
 }
@@ -371,6 +373,8 @@ impl Config {
                     if let Some(x) = language_config.import_query {
                         dest_config.import_query = Some(x.clone());
                     }
+                    if let Some(x) = language_config.injection_query {
+                        dest_config.injection_query = Some(x.clone());
                     }
                     dest_config
                 }
@@ -453,7 +457,7 @@ impl<'a> QueryCompiler<'a> {
     pub fn get_language_info(
         &mut self,
         language_name: LanguageName,
-        loader: &mut loader::Loader,
+        language: &tree_sitter::Language,
     ) -> Result<std::rc::Rc<LanguageInfo>, QueryCompilerError> {
         let entry = self.cache.entry(language_name);
         let entry = match entry {
@@ -470,11 +474,7 @@ impl<'a> QueryCompiler<'a> {
             .languages
             .get(&language_name)
             .ok_or(QueryCompilerError::LanguageIsNotInConfig(language_name))?;
-        let language = loader
-            .get_language(language_config.parser.as_ref().unwrap())
-            .unwrap()
-            .unwrap();
-        match LanguageInfo::new(&language, language_config) {
+        match LanguageInfo::new(language, language_config) {
             Ok(x) => Ok(entry.insert(Some(std::rc::Rc::new(x))).clone().unwrap()),
             Err(e) => {
                 entry.insert(None);
@@ -490,6 +490,7 @@ pub struct LanguageInfo {
     pub parent_query: Option<ParentQuery>,
     pub recurse_query: Option<RecurseQuery>,
     pub import_query: Option<ImportQuery>,
+    pub injection_query: Option<InjectionQuery>,
 }
 
 pub struct DefinitionQuery {
@@ -512,6 +513,19 @@ pub struct ImportQuery {
     pub query: tree_sitter::Query,
     pub index_name: u32,
     pub index_origin: u32,
+}
+
+pub struct InjectionQuery {
+    pub query: tree_sitter::Query,
+    pub index_range: u32,
+    pub language_hints_by_pattern_index: Vec<InjectionLanguageHint>,
+}
+
+#[derive(Clone)]
+pub enum InjectionLanguageHint {
+    Absent,
+    Fixed(String),
+    Capture(usize),
 }
 
 impl LanguageInfo {
@@ -627,6 +641,40 @@ impl LanguageInfo {
                 })
             }
         };
+        let injection_query = match &config.injection_query {
+            None => None,
+            Some(query_source) => {
+                let query = compile_query(language, query_source.as_ref())?;
+                let mut language_hints_by_pattern_index: Vec<InjectionLanguageHint> =
+                    vec![InjectionLanguageHint::Absent; query.pattern_count()];
+                for (pattern_index, language_hint) in language_hints_by_pattern_index
+                    .iter_mut()
+                    .enumerate()
+                    .take(query.pattern_count())
+                {
+                    for prop in query.property_settings(pattern_index) {
+                        if &*prop.key == "injection.language" {
+                            if let Some(value) = prop.value.as_ref() {
+                                *language_hint = InjectionLanguageHint::Fixed((*value).to_string());
+                            }
+                            if let Some(capture_index) = prop.capture_id {
+                                *language_hint = InjectionLanguageHint::Capture(capture_index);
+                            }
+                        }
+                    }
+                }
+                Some(InjectionQuery {
+                    index_range: get_capture_index(
+                        &query,
+                        "injection.content",
+                        query_source.as_ref(),
+                        "injection_query",
+                    )?,
+                    language_hints_by_pattern_index,
+                    query,
+                })
+            }
+        };
         Ok(Self {
             definition_query,
             sibling_node_types: match &config.sibling_node_types {
@@ -636,6 +684,7 @@ impl LanguageInfo {
             parent_query,
             recurse_query,
             import_query,
+            injection_query,
         })
     }
 }
