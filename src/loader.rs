@@ -281,6 +281,8 @@ fn get_language(
             load_language_at_path(loader, &src_path, false)
         }
         ParserSource::TarballSource(tarball) => {
+            let tarball_path = sources_dir.join(&tarball.name).with_extension("tar");
+            download_tarball(&tarball.url, &tarball.sha256hex, &tarball_path, offline)?;
             if let Some(language) = load_language_if_tarball_older(loader, tarball, sources_dir) {
                 if tree_sitter::MIN_COMPATIBLE_LANGUAGE_VERSION <= language.abi_version()
                     && language.abi_version() <= tree_sitter::LANGUAGE_VERSION
@@ -288,8 +290,6 @@ fn get_language(
                     return Ok(language);
                 }
             }
-            let tarball_path = sources_dir.join(&tarball.name).with_extension("tar");
-            download_tarball(&tarball.url, &tarball.sha256hex, &tarball_path, offline)?;
             let tarball_root = extract_tarball(&tarball_path)?;
             let src_path = if tarball.subdirectory == "." {
                 tarball_root.path().to_path_buf()
@@ -498,7 +498,7 @@ fn download_tarball(
         command
             .args(["--output"])
             .arg(tarball_path)
-            .args(["--no-clobber", "-LsS", tarball_url])
+            .args(["-LsS", tarball_url])
             .stderr(std::process::Stdio::inherit());
         stdout_if_success(command).map_err(|e| LoaderError::ChildProcessFailed {
             verb: format!("download {:?}", tarball_url),
