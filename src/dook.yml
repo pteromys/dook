@@ -142,6 +142,22 @@ js:
     (class_declaration body: (_) @exclude)
     (variable_declarator value: (_) @exclude)
     (assignment_expression right: (_) @exclude)
+markdown:
+  parser:
+    tarball:
+      name: markdown
+      sha256hex: e0fdb2dca1eb3063940122e1475c9c2b069062a638c95939e374c5427eddee9f
+      subdirectory: tree-sitter-markdown-0.4.1/tree-sitter-markdown/src
+      url: https://github.com/tree-sitter-grammars/tree-sitter-markdown/archive/refs/tags/v0.4.1.tar.gz
+  definition_query: |
+    (section [
+      (atx_heading heading_content: (_) @name)
+      (setext_heading heading_content: (_) @name)]) @def
+  injection_query: |
+    (fenced_code_block
+      (info_string (language) @lang)
+      (code_fence_content) @injection.content
+      (#set! injection.language @lang))
 python:
   parser:
     tarball:

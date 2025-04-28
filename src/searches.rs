@@ -105,6 +105,7 @@ impl ParsedFile {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct SearchResult {
     pub ranges: range_union::RangeUnion,
     pub recurse_names: Vec<String>,

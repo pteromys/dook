@@ -10,6 +10,9 @@ changelog 🧚
     - `static_python`
 - Support injections (embedded fragments in another language):
   - rust inside rust macros
+  - fenced code blocks inside markdown
+- New default languages:
+  - markdown (look up sections by header)
 - Config file format version 3 (never released v2):
   - Add integer "_version" field.
   - Switch to yaml since we use a lot of multi-line strings.

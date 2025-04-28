@@ -429,6 +429,12 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
                         local_pattern,
                         true,
                     );
+                    if cli.verbose >= 1 {
+                        write_output_line(
+                            &mut pager,
+                            format!("V: search results = {:?}", search_result,).as_bytes(),
+                        )?;
+                    }
                     if !search_result.ranges.is_empty() {
                         // It could be nice to do a single bat invocation in the
                         // rare case that consecutive recursions hit the same file,

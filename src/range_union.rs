@@ -1,4 +1,4 @@
-#[derive(Default)]
+#[derive(Default, Debug, Clone)]
 pub struct RangeUnion {
     ends_by_start: std::collections::BTreeMap<usize, usize>,
 }

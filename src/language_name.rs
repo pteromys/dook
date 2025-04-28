@@ -11,6 +11,7 @@ macro_attr_2018::macro_attr! {
         C,
         CPlusPlus,
         Go,
+        Markdown,
     }
 }
 
@@ -28,6 +29,7 @@ impl<'de> merde::Deserialize<'de> for LanguageName {
                 "c" => Self::C,
                 "cplusplus" => Self::CPlusPlus,
                 "go" => Self::Go,
+                "markdown" => Self::Markdown,
                 _ => {
                     return Err(merde::MerdeError::StringParsingError {
                         format: "yaml",
@@ -63,6 +65,7 @@ impl merde::Serialize for LanguageName {
             Self::C => "c",
             Self::CPlusPlus => "cplusplus",
             Self::Go => "go",
+            Self::Markdown => "markdown",
         };
         let event = merde::Event::Str(merde::CowStr::copy_from_str(self_str));
         serializer.write(event).await
@@ -81,6 +84,7 @@ impl LanguageName {
             "c" => Self::C,
             "c++" => Self::CPlusPlus,
             "go" => Self::Go,
+            "markdown" => Self::Markdown,
             _ => return None,
         })
     }
@@ -100,6 +104,7 @@ impl std::fmt::Display for LanguageName {
                 Self::C => "C",
                 Self::CPlusPlus => "C++",
                 Self::Go => "Go",
+                Self::Markdown => "Markdown",
             }
         )
     }
