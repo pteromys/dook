@@ -147,6 +147,7 @@ fn main() -> Result<std::process::ExitCode, DookError> {
 
 fn main_inner() -> Result<std::process::ExitCode, DookError> {
     use clap::Parser;
+    use std::str::FromStr;
 
     env_logger::init();
 
@@ -335,7 +336,7 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
                         match injection
                             .language_hint
                             .as_ref()
-                            .and_then(|hint| LanguageName::from_hyperpolyglot(hint))
+                            .and_then(|hint| LanguageName::from_str(hint).ok())
                         {
                             Some(hinted) => hinted,
                             None => match searches::detect_language_from_bytes(

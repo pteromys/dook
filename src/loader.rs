@@ -14,7 +14,7 @@ pub enum ParserSource {
     AbsolutePath(String), // tree-sitter-loader will recompile if parser.c is newer than .so
     GitSource(GitSource), // clone/fetch/checkout/whatever, then handle like AbsolutePath
     TarballSource(TarballSource), // recompile if .tar is newer than .so
-    Static(LanguageName), // use built-in
+    Static(String),       // use built-in
 }
 
 merde::derive! {
@@ -106,7 +106,7 @@ pub enum LoaderError {
         source: Box<dyn DebuggableDisplayable>,
         src_path: std::path::PathBuf,
     },
-    LanguageWasNotBuiltIn(LanguageName),
+    LanguageWasNotBuiltIn(String),
 }
 
 // this is just here because anyhow::Error doesn't claim to implement std::error::Error;
@@ -155,7 +155,7 @@ impl std::fmt::Display for LoaderError {
                 => write!(f, "Could not compile grammar at {:?}: {}",
                           src_path, *source),
             Self::LanguageWasNotBuiltIn(language_name)
-                => write!(f, "Support for {:?} was not enabled at compile time",
+                => write!(f, "Support for language {:?} was not enabled at compile time",
                           language_name),
         }
     }
@@ -243,9 +243,10 @@ fn get_language(
     sources_dir: &std::path::Path,
     offline: bool,
 ) -> Result<tree_sitter::Language, LoaderError> {
+    use std::str::FromStr;
     match source {
         ParserSource::Static(language_name) => {
-            if *language_name == LanguageName::Python {
+            if let Ok(LanguageName::PYTHON) = LanguageName::from_str(language_name.as_ref()) {
                 if let Some(language) = get_builtin_language_python() {
                     return Ok(language);
                 }

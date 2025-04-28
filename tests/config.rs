@@ -1,6 +1,5 @@
-use dook::config::{Config, QueryCompiler};
-use dook::language_name::LanguageName;
 use dook::loader;
+use dook::{Config, QueryCompiler};
 
 #[test]
 fn default_patterns_are_loadable() {
@@ -12,14 +11,14 @@ fn default_patterns_are_loadable() {
         );
     let default_config = Config::load_default();
     let mut query_compiler = QueryCompiler::new(&default_config);
-    for language_name in LanguageName::iter_variants() {
-        let parser_source = default_config.get_parser_source(language_name).unwrap();
+    for language_name in default_config.configured_languages() {
+        let parser_source = default_config.get_parser_source(*language_name).unwrap();
         let language = language_loader
             .get_language(parser_source)
             .unwrap()
             .unwrap();
         query_compiler
-            .get_language_info(language_name, &language)
+            .get_language_info(*language_name, &language)
             .unwrap();
     }
 }

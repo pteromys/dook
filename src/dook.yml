@@ -1,5 +1,5 @@
 _version: 3
-c:
+C:
   parser:
     tarball:
       name: c
@@ -38,7 +38,7 @@ c:
     (function_declarator)
     (function_definition body: (_) @exclude)
     (struct_specifier body: (_) @exclude)
-cplusplus:
+C++:
   parser:
     tarball:
       name: cpp
@@ -79,7 +79,7 @@ cplusplus:
     (function_definition body: (_) @exclude)
     (struct_specifier body: (_) @exclude)
     (class_specifier body: (_) @exclude)
-go:
+Go:
   parser:
     tarball:
       name: go
@@ -101,7 +101,7 @@ go:
     (type_spec type: (_) @exclude)
     (function_declaration body: (_) @exclude)
     (method_declaration body: (_) @exclude)
-js:
+JavaScript:
   parser:
     tarball:
       name: javascript
@@ -142,7 +142,7 @@ js:
     (class_declaration body: (_) @exclude)
     (variable_declarator value: (_) @exclude)
     (assignment_expression right: (_) @exclude)
-markdown:
+Markdown:
   parser:
     tarball:
       name: markdown
@@ -158,7 +158,7 @@ markdown:
       (info_string (language) @lang)
       (code_fence_content) @injection.content
       (#set! injection.language @lang))
-python:
+Python:
   parser:
     tarball:
       name: python
@@ -214,7 +214,7 @@ python:
   import_query: |
     (import_from_statement module_name: (_) @origin name: (_) @name)
     (attribute object: (_) @origin attribute: (identifier) @name)
-rust:
+Rust:
   parser:
     git:
       clone: https://github.com/tree-sitter/tree-sitter-rust
@@ -256,7 +256,7 @@ rust:
     (macro_invocation
       (token_tree) @injection.content
       (#set! injection.language "Rust"))
-ts:
+TypeScript:
   parser:
     tarball:
       name: typescript
@@ -312,7 +312,7 @@ ts:
     (pair value: (_) @exclude)
     (variable_declarator value: (_) @exclude)
     (assignment_expression right: (_) @exclude)
-tsx:
+TSX:
   parser:
     tarball:
       name: tsx

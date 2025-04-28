@@ -3,10 +3,9 @@
     reason = "They're all declared as Vec<Range>"
 )]
 
-use dook::config::{Config, QueryCompiler};
-use dook::language_name::LanguageName;
 use dook::loader;
 use dook::searches;
+use dook::{Config, LanguageName, QueryCompiler};
 
 type TestCase<'a> = (&'a str, Vec<std::ops::Range<usize>>, Vec<&'a str>);
 
@@ -91,7 +90,7 @@ fn python() {
         ("sixteen", vec![96..100], vec![]),
     ];
     verify_examples(
-        LanguageName::Python,
+        LanguageName::PYTHON,
         include_bytes!("../test_cases/python.py"),
         &cases,
     );
@@ -122,7 +121,11 @@ fn js() {
         ("thirteen", vec![33..34], vec![]),  // object destructuring
         ("fourteen", vec![34..35], vec![]),  // shorthand object destructuring
     ];
-    for language_name in [LanguageName::Js, LanguageName::Ts, LanguageName::Tsx] {
+    for language_name in [
+        LanguageName::JAVASCRIPT,
+        LanguageName::TYPESCRIPT,
+        LanguageName::TSX,
+    ] {
         verify_examples(
             language_name,
             include_bytes!("../test_cases/javascript.js"),
@@ -141,7 +144,7 @@ fn tsx() {
         ("ten", vec![0..1], vec![]),  // rest parameters
     ];
     verify_examples(
-        LanguageName::Tsx,
+        LanguageName::TSX,
         include_bytes!("../test_cases/typescript.tsx"),
         &cases,
     );

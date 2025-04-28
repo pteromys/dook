@@ -2,7 +2,7 @@ use crate::language_name::LanguageName;
 
 pub fn dissimilarity(language_name: LanguageName, dep: &str, path: &std::path::Path) -> i32 {
     match language_name {
-        LanguageName::Python => {
+        LanguageName::PYTHON => {
             let dep_components = dep.split('.');
             let path_components = path.iter();
             let match_count = dep_components

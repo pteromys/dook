@@ -20,6 +20,7 @@ changelog 🧚
   - Change queries to single strings.
   - All fields are now optional so your config only needs to be overrides of the default.
   - Parent node types and exclusions are now a query with an optional `@exclude` capture.
+  - Language names are case-sensitive and are whatever hyperpolyglot uses.
 - New CLI options:
   - `--wrap` and `-S` (forwarded to `bat`)
   - `--stdin` to search on stdin, gated by `stdin` feature

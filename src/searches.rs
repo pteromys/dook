@@ -41,23 +41,24 @@ impl std::fmt::Display for FileParseError {
 }
 
 pub fn detect_language_from_path(path: &std::path::Path) -> Result<LanguageName, FileParseError> {
+    use std::str::FromStr;
     let language_name_str = hyperpolyglot::detect(path)
         .map_err(|e| FileParseError::UnreadableFile(e.to_string()))?
         .ok_or(FileParseError::UnknownLanguage)?
         .language();
-    LanguageName::from_hyperpolyglot(language_name_str)
-        .ok_or_else(|| FileParseError::UnsupportedLanguage(language_name_str.to_owned()))
+    LanguageName::from_str(language_name_str)
+        .map_err(|_| FileParseError::UnsupportedLanguage(language_name_str.to_owned()))
 }
 
 #[cfg(feature = "stdin")]
 pub fn detect_language_from_bytes(bytes: &[u8]) -> Result<LanguageName, FileParseError> {
-    use core::str;
+    use std::str::FromStr;
     let language_name_str = hyperpolyglot::detectors::classify(
-        str::from_utf8(bytes).map_err(|e| FileParseError::UnreadableFile(e.to_string()))?,
+        std::str::from_utf8(bytes).map_err(|e| FileParseError::UnreadableFile(e.to_string()))?,
         &[],
     );
-    LanguageName::from_hyperpolyglot(language_name_str)
-        .ok_or_else(|| FileParseError::UnsupportedLanguage(language_name_str.to_owned()))
+    LanguageName::from_str(language_name_str)
+        .map_err(|_| FileParseError::UnsupportedLanguage(language_name_str.to_owned()))
 }
 
 #[cfg(not(feature = "stdin"))]

@@ -87,7 +87,7 @@ merde::derive! {
 }
 
 #[derive(Debug, PartialEq)]
-struct ConfigV1(std::collections::HashMap<LanguageName, LanguageConfigV1>);
+struct ConfigV1(std::collections::HashMap<String, LanguageConfigV1>);
 
 merde::derive! {
     impl (Deserialize) for struct ConfigV1 transparent
@@ -96,7 +96,7 @@ merde::derive! {
 #[derive(Debug, PartialEq)]
 struct ConfigV2 {
     version: u64,
-    languages: std::collections::HashMap<LanguageName, LanguageConfigV1>,
+    languages: std::collections::HashMap<String, LanguageConfigV1>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -115,9 +115,9 @@ merde::derive! {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct ConfigV3 {
+struct ConfigV3 {
     version: u64,
-    languages: std::collections::HashMap<LanguageName, LanguageConfigV3>,
+    languages: std::collections::HashMap<String, LanguageConfigV3>,
 }
 
 merde::impl_into_static!(struct ConfigV3 { version, languages });
@@ -127,6 +127,29 @@ fn join_strs(v: Vec<String>, sep: &str) -> String {
         .flat_map(|s| [sep, s].into_iter())
         .skip(1)
         .collect()
+}
+
+impl From<ConfigV1> for ConfigV2 {
+    fn from(value: ConfigV1) -> Self {
+        let ConfigV1(language_map) = value;
+        Self {
+            version: 1,
+            languages: language_map,
+        }
+    }
+}
+
+impl From<ConfigV2> for ConfigV3 {
+    fn from(value: ConfigV2) -> Self {
+        Self {
+            version: value.version,
+            languages: value
+                .languages
+                .into_iter()
+                .map(|(k, v)| (k, v.into()))
+                .collect(),
+        }
+    }
 }
 
 impl From<LanguageConfigV1> for LanguageConfigV3 {
@@ -180,9 +203,7 @@ impl<'de> merde::Deserialize<'de> for ConfigV2 {
                         result.version = u64::try_from(de.next().await?.into_i64()?)
                             .map_err(|_| merde::MerdeError::OutOfRange)?;
                     } else {
-                        de.put_back(merde::Event::Str(key))?;
-                        let key: LanguageName = de.t().await?;
-                        result.languages.insert(key, de.t().await?);
+                        result.languages.insert(key.to_string(), de.t().await?);
                     }
                 }
                 merde::Event::MapEnd => return Ok(result),
@@ -215,9 +236,7 @@ impl<'de> merde::Deserialize<'de> for ConfigV3 {
                         result.version = u64::try_from(de.next().await?.into_i64()?)
                             .map_err(|_| merde::MerdeError::OutOfRange)?;
                     } else {
-                        de.put_back(merde::Event::Str(key))?;
-                        let key: LanguageName = de.t().await?;
-                        result.languages.insert(key, de.t().await?);
+                        result.languages.insert(key.to_string(), de.t().await?);
                     }
                 }
                 merde::Event::MapEnd => return Ok(result),
@@ -233,6 +252,7 @@ impl<'de> merde::Deserialize<'de> for ConfigV3 {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub enum ConfigFormat {
     V1,
     V2,
@@ -267,13 +287,73 @@ impl<'de> merde::Deserialize<'de> for ConfigFormat {
     }
 }
 
-pub use ConfigV3 as Config;
+#[derive(Debug, PartialEq)]
+pub struct Config {
+    version: ConfigFormat,
+    languages: std::collections::HashMap<LanguageName, LanguageConfigV3>,
+}
+
+#[derive(Debug)]
+pub enum ConfigParseError {
+    Deserialize(merde::MerdeError<'static>),
+    UnknownLanguage(String),
+}
+
+impl From<merde::MerdeError<'_>> for ConfigParseError {
+    fn from(value: merde::MerdeError<'_>) -> Self {
+        use merde::IntoStatic;
+        Self::Deserialize(value.into_static())
+    }
+}
+
+#[rustfmt::skip]
+impl std::fmt::Display for ConfigParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Deserialize(e)
+                => write!(f, "{}", e),
+            Self::UnknownLanguage(language)
+                => write!(f, "unknown language: {}", language),
+        }
+    }
+}
+
+impl TryFrom<ConfigV3> for Config {
+    type Error = ConfigParseError;
+    fn try_from(value: ConfigV3) -> Result<Self, Self::Error> {
+        use std::str::FromStr;
+        let mut languages: std::collections::HashMap<LanguageName, LanguageConfigV3> =
+            std::collections::HashMap::new();
+        for (language_name, config) in value.languages {
+            if let Ok(language_name) = LanguageName::from_str(language_name.as_ref()) {
+                languages.insert(language_name, config);
+                continue;
+            }
+            if value.version <= 2 {
+                if let Ok(language_name) = LanguageName::from_legacy(language_name.as_ref()) {
+                    languages.insert(language_name, config);
+                    continue;
+                }
+            }
+            return Err(ConfigParseError::UnknownLanguage(language_name));
+        }
+        Ok(Self {
+            version: ConfigFormat::V3,
+            languages,
+        })
+    }
+}
 
 impl Config {
+    /// Used by integration tests for limited access to private self.languages
+    #[allow(unused)]
+    pub fn configured_languages(&self) -> impl Iterator<Item = &LanguageName> {
+        self.languages.keys()
+    }
+
     pub fn load(
         explicit_path: &Option<impl AsRef<std::path::Path>>,
     ) -> std::io::Result<Option<Self>> {
-        use merde::IntoStatic;
         let config_bytes = match explicit_path {
             // explicitly requested file paths expose any errors reading
             Some(p) => std::fs::read(p.as_ref())?,
@@ -298,53 +378,42 @@ impl Config {
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         let deserialize_result = Self::load_from_str(config_str);
         match deserialize_result {
-            Ok(c) => Ok(Some(c.into_static())),
+            Ok(c) => Ok(Some(c)),
             Err(e) => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                e.into_static(),
+                e.to_string(),
             )),
         }
     }
 
-    fn load_from_str(config_str: &str) -> Result<Self, merde::MerdeError> {
+    fn load_from_str(config_str: &str) -> Result<Self, ConfigParseError> {
         // first pass to hunt for the config version
         let config_format: ConfigFormat = merde::yaml::from_str(config_str)?;
         // second pass depending on version
-        match config_format {
+        let v3 = match config_format {
             ConfigFormat::V1 => {
-                let ConfigV1(language_configs) = merde::yaml::from_str(config_str)?;
-                Ok(ConfigV3 {
-                    version: 3,
-                    languages: language_configs
-                        .into_iter()
-                        .map(|(k, v)| (k, v.into()))
-                        .collect(),
-                })
+                let v1 = merde::yaml::from_str::<ConfigV1>(config_str)?;
+                let v2: ConfigV2 = v1.into();
+                v2.into()
             }
             ConfigFormat::V2 => {
                 let v2 = merde::yaml::from_str::<ConfigV2>(config_str)?;
-                Ok(ConfigV3 {
-                    version: 3,
-                    languages: v2
-                        .languages
-                        .into_iter()
-                        .map(|(k, v)| (k, v.into()))
-                        .collect(),
-                })
+                v2.into()
             }
-            ConfigFormat::V3 => merde::yaml::from_str::<ConfigV3>(config_str),
-        }
+            ConfigFormat::V3 => merde::yaml::from_str::<ConfigV3>(config_str)?,
+        };
+        v3.try_into()
     }
 
     pub fn load_default() -> Self {
-        let mut result = Self::load_from_str(&DEFAULT_CONFIG.to_ascii_lowercase())
+        let mut result = Self::load_from_str(DEFAULT_CONFIG)
             .expect("default_patterns_are_loadable test should have caught this");
         if cfg!(feature = "static_python") {
             result
                 .languages
-                .get_mut(&LanguageName::Python)
+                .get_mut(&LanguageName::PYTHON)
                 .expect("default_patterns_are_loadable test should have caught this")
-                .parser = Some(loader::ParserSource::Static(LanguageName::Python));
+                .parser = Some(loader::ParserSource::Static("Python".to_string()));
         }
         result
     }
@@ -724,7 +793,7 @@ mod tests {
         let v2 = Config::load_from_str(
             r#"{
             "_version": 2,
-            "python": {
+            "pYtHOn": {
                 "match_patterns": ["(function_definition name: (_) @name) @def"],
                 "sibling_patterns": [],
                 "parent_patterns": [],
@@ -736,7 +805,7 @@ mod tests {
         let v3 = Config::load_from_str(
             r#"{
             "_version": 3,
-            "pYthON": {
+            "Python": {
                 "definition_query": "(function_definition name: (_) @name) @def",
                 "sibling_node_types": [],
                 "parent_query": null,
