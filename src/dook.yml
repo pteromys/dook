@@ -244,6 +244,7 @@ Rust:
       (trait_item name: (_) @name)
       (type_item name: (_) @name)
       (union_item name: (_) @name)
+      (field_declaration name: (_) @name)
     ] @def
   sibling_node_types:
   - line_comment
@@ -252,6 +253,7 @@ Rust:
   parent_query: |
     (function_item body: (_) @exclude)
     (impl_item body: (_) @exclude)
+    (struct_item body: (_) @exclude)
   injection_query: |
     (macro_invocation
       (token_tree) @injection.content

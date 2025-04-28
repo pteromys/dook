@@ -29,10 +29,12 @@ changelog 🧚
   - `--verbose` to litter console output with unstructured progress messages
 - Fixes:
   - Search patterns with `|` no longer fail to restrict to whole-name match.
-  - Catch names bound by destructuring in js, ts, tsx, python.
   - Fixed failing to match some recursion patterns.
-  - Catch named function expressions in ts/tsx.
-  - Show parent object names in js/ts/tsx.
+- Added recognitions:
+  - names bound by destructuring in js, ts, tsx, python
+  - named function expressions in ts/tsx
+  - parent object names in js/ts/tsx
+  - struct members and parent structs in rust
 - Cache tree-sitter query compilation for 4x speedup.
 - Add bash and zsh completions.
 - Order search by likely imports to try to get results sooner (python).
