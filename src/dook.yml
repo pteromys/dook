@@ -175,12 +175,12 @@ Python:
       (decorated_definition [
         (class_definition name: (_) @name)
         (function_definition name: (_) @name)])
-      (expression_statement (assignment left: [
+      (assignment left: [
         (_) @name
         (attribute attribute: (_) @name)
         (subscript subscript: (string (string_content) @name))
         (pattern_list (identifier) @name)
-      ]))
+      ])
     ] @def
     (dictionary (pair key: (string (string_content) @name)) @def)
     (parameters (identifier) @name @def)

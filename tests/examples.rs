@@ -112,7 +112,7 @@ fn python() {
         ("two", vec![14..15], vec![]),
         ("three", vec![14..14, 16..16], vec![]),
         ("four", vec![14..14, 18..24], vec![]),
-        ("five", vec![14..14, 22..22], vec![]),
+        ("five", vec![14..14, 19..22], vec![]),
         ("six", vec![14..14, 26..34], vec!["hecks"]),
         ("seven", vec![41..47], vec![]),
         ("eight", vec![49..49], vec![]),
@@ -133,7 +133,7 @@ fn python() {
         ("eleven", vec![83..84], vec![]),
         ("twelve", vec![83..84], vec![]),
         ("thirteen", vec![83..83, 86..86], vec![]),
-        ("fourteen", vec![83..83, 90..92], vec![]),  // 2nd group should be 89..92
+        ("fourteen", vec![83..83, 89..92], vec![]),
         ("fifteen", vec![83..83, 94..94], vec![]),
         ("sixteen", vec![97..100], vec![]),
     ];

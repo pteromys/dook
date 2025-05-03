@@ -176,6 +176,13 @@ pub fn find_definition(
             }
             // include preceding neighbors as context while they remain relevant
             // such as comments, python decorators, rust attributes, and c++ template arguments
+            while let Some(same_line_ancestor) = node.parent() {
+                if same_line_ancestor.range().start_point.row == node.range().start_point.row {
+                    node = same_line_ancestor
+                } else {
+                    break;
+                }
+            }
             let mut last_ambiguously_attached_sibling_range: Option<std::ops::Range<usize>> = None;
             while let Some(sibling) = node.prev_sibling() {
                 if match std::num::NonZero::new(sibling.kind_id()) {

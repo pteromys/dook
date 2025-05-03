@@ -31,6 +31,9 @@ changelog 🧚
   - Search patterns with `|` no longer fail to restrict to whole-name match.
   - Fixed failing to match some recursion patterns.
   - `--dump` now respects `--paging`.
+  - Searching for a function argument now includes the function's doc comments.
+    More generally, previous-sibling walk now starts from the outermost ancestor
+    starting on the same line.
 - Added recognitions:
   - names bound by destructuring in js, ts, tsx, python
   - named function expressions in ts/tsx
