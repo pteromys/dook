@@ -203,16 +203,26 @@ pub fn search_one_file_with_one_injection(
                 params.local_pattern,
                 params.recurse,
             );
-            if let Some(injection) = injection {
-                result.ranges.extend(injection.context.iter());
+            if !result.ranges.is_empty() {
+                if let Some(injection) = injection {
+                    result.ranges.extend(injection.context.iter());
+                }
             }
             SearchResult::Definitions(result)
         },
-        injections: searches::find_injections(
-            file_bytes,
-            &tree,
-            &language_info,
-            params.current_pattern,
-        ),
+        injections: {
+            let mut new_injections = searches::find_injections(
+                file_bytes,
+                &tree,
+                &language_info,
+                params.current_pattern,
+            );
+            if let Some(parent_injection) = injection {
+                for i in &mut new_injections {
+                    i.context.extend(parent_injection.context.iter());
+                }
+            }
+            new_injections
+        },
     })
 }

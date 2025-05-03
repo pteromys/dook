@@ -27,33 +27,28 @@ If you want completion assistance in bash or zsh, install either:
 ## Example usage
 
 ```
-pteromys@delia ~/src/dook $ dook write
-───────┬────────────────────────────────────────────────────────────────
-       │ File: ./src/paging.rs
-───────┼────────────────────────────────────────────────────────────────
-  61   │ impl std::io::Write for MaybePager {
- ...   │ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ 8< ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
-  69   │     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-  70   │         match self.pipe() {
-  71   │             Some(pipe) => pipe.write(buf),
-  72   │             None => std::io::stdout().write(buf),
-  73   │         }
-  74   │     }
-───────┴────────────────────────────────────────────────────────────────
+pteromys@delia ~/src/dook $ dook into_iter
+───────┬────────────────────────────────────────────────────
+       │ File: ./src/range_union.rs
+───────┼────────────────────────────────────────────────────
+  51   │ impl<'it> IntoIterator for &'it RangeUnion {
+ ...   │ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ 8< ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
+  54   │     fn into_iter(self) -> Self::IntoIter {
+  55   │         self.iter()
+  56   │     }
+───────┴────────────────────────────────────────────────────
 ```
 
 Also attempts to find assignments, class definitions, etc—because why should you have to figure out the difference before you search? In old javascript codebases there isn't really a difference anyway!
 
 ## Supported languages
 
-- c
-- c++
-- go
-- javascript
-- python
-- rust
-- typescript
-- tsx
+- C, C++
+- Go
+- HTML, CSS, Markdown
+- JavaScript, TypeScript, TSX
+- Python
+- Rust
 
 ## Alternatives and prior art
 
@@ -61,7 +56,7 @@ Also attempts to find assignments, class definitions, etc—because why should y
 - [cq](https://github.com/newlinedotco/cq): jq-but-for-code, using a more powerful code query syntax, also powered by tree-sitter.
 - [ast-grep](https://ast-grep.github.io/) and [comby](https://comby.dev/): syntax-aware find-and-replace (so query language supports some form of captures)
 - [mogglo](https://langston-barrett.github.io/mogglo/): lua-scriptable code search and transformation
-- [`git grep -W 'def your_function_name\('`](https://git-scm.com/docs/git-grep) (or a language-specific analogue) is often good enough in [a bunch of languages](https://git-scm.com/docs/gitattributes#_defining_a_custom_hunk_header).
+- [`git grep -W 'def your_function_name\('`](https://git-scm.com/docs/git-grep) (or a language-specific analogue) is often good enough in [a bunch of languages](https://git-scm.com/docs/gitattributes#_defining_a_custom_hunk_header). And if you pipe it to [delta](https://dandavison.github.io/delta/grep.html) you can get syntax highlighting.
 - [searching directly on GitHub](https://docs.github.com/en/repositories/working-with-files/using-files/navigating-code-on-github#precise-and-search-based-navigation), powered by [stack graphs](https://docs.rs/stack-graphs/latest/stack_graphs/graph/index.html)
 
 ## Goals vs non-goals

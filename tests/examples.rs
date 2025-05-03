@@ -248,3 +248,19 @@ fn markdown_injections() {
         &cases,
     );
 }
+
+#[test]
+fn html() {
+    let cases = [
+        ("chill", vec![2..3, 5..8]), // classname is only in CSS
+        ("sick", vec![2..3, 5..5, 9..11, 19..19, 23..25]), // id is in CSS and HTML
+        ("Title", vec![2..2, 19..22]), // headings
+        // js; also tests nuisance injection---should be substring of classname example
+        ("ill", vec![2..3, 13..16]),
+    ];
+    verify_multipass_examples(
+        LanguageName::HTML,
+        include_bytes!("../test_cases/html.html"),
+        &cases,
+    );
+}

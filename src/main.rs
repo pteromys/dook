@@ -1,10 +1,3 @@
-// Prior art:
-//     https://github.com/simonw/symbex
-//     https://github.com/newlinedotco/cq
-//     git grep -W
-//     https://dandavison.github.io/delta/grep.html
-//     https://docs.github.com/en/repositories/working-with-files/using-files/navigating-code-on-github#precise-and-search-based-navigation
-
 use crate::language_name::LanguageName;
 use enum_derive_2018::EnumFromInner;
 use etcetera::AppStrategy;

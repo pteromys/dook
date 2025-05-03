@@ -11,8 +11,11 @@ changelog 🧚
 - Support injections (embedded fragments in another language):
   - rust inside rust macros
   - fenced code blocks inside markdown
+  - js and css inside html
 - New default languages:
   - markdown (look up sections by header)
+  - html (look up heading text and id and name attributes)
+  - css (look up any ruleset involving a class or id selector)
 - Config file format version 3 (never released v2):
   - Add integer "_version" field.
   - Switch to yaml since we use a lot of multi-line strings.
@@ -29,7 +32,7 @@ changelog 🧚
   - `--verbose` to litter console output with unstructured progress messages
 - Fixes:
   - Search patterns with `|` no longer fail to restrict to whole-name match.
-  - Fixed failing to match some recursion patterns.
+  - Fixed failing to match some recursion patterns seemingly at random.
   - `--dump` now respects `--paging`.
   - Searching for a function argument now includes the function's doc comments.
     More generally, previous-sibling walk now starts from the outermost ancestor

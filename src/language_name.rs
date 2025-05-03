@@ -15,6 +15,9 @@ impl LanguageName {
     pub const GO: Self = Self("Go");
     pub const MARKDOWN: Self = Self("Markdown");
 
+    #[allow(unused)]
+    pub const HTML: Self = Self("HTML");
+
     /// Convert language names from the strings we used in the v1 and v2 config format
     pub fn from_legacy(s: &str) -> Result<Self, UnknownLanguageError> {
         Ok(match s.to_lowercase().as_ref() {
