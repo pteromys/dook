@@ -70,6 +70,7 @@ pub struct SearchResult {
 #[derive(Debug, Clone)]
 pub struct InjectionRange {
     pub range: tree_sitter::Range,
+    pub context: range_union::RangeUnion,
     pub language_hint: Option<String>,
 }
 
@@ -204,30 +205,12 @@ pub fn find_definition(
             }
             // then include a header line from each relevant ancestor
             if let Some(parent_query) = &language_info.parent_query {
-                while let Some(parent) = node.parent() {
-                    // TODO interval arithmetic
-                    let mut parent_matches =
-                        context_cursor.matches(&parent_query.query, parent, source_code);
-                    let context_start = parent.range().start_point.row;
-                    let mut context_end = parent.range().end_point;
-                    let mut matched = false;
-                    while let Some(parent_match) = parent_matches.next() {
-                        for capture in parent_match
-                            .captures
-                            .iter()
-                            .filter(|c| Some(c.index) == parent_query.index_exclude)
-                        {
-                            if let Some(prev) = capture.node.prev_sibling() {
-                                context_end = context_end.min(prev.range().end_point);
-                            }
-                        }
-                        matched = true;
-                    }
-                    if matched {
-                        ranges.push(context_start..end_point_to_end_line(context_end));
-                    }
-                    node = parent;
-                }
+                ranges.extend(AncestorRangeIterator {
+                    node: capture.node,
+                    cursor: &mut context_cursor,
+                    query: parent_query,
+                    source_code,
+                });
             }
         }
     }
@@ -275,6 +258,8 @@ pub fn find_injections(
     use tree_sitter::StreamingIterator;
     let mut cursor = tree_sitter::QueryCursor::new();
     let mut injections: Vec<InjectionRange> = vec![];
+    let mut context_cursor = tree_sitter::QueryCursor::new();
+    context_cursor.set_max_start_depth(Some(0));
     if let Some(injection_query) = &language_info.injection_query {
         cursor
             .matches(&injection_query.query, tree.root_node(), source_code)
@@ -310,9 +295,59 @@ pub fn find_injections(
                         .map(|capture| InjectionRange {
                             range: capture.node.range(),
                             language_hint: language_hint.map(|s| s.to_owned()),
+                            context: match &language_info.parent_query {
+                                Some(query) => AncestorRangeIterator {
+                                    node: capture.node,
+                                    cursor: &mut context_cursor,
+                                    query,
+                                    source_code,
+                                }
+                                .into(),
+                                None => Default::default(),
+                            },
                         }),
                 )
             });
     }
     injections
+}
+
+struct AncestorRangeIterator<'it> {
+    node: tree_sitter::Node<'it>,
+    cursor: &'it mut tree_sitter::QueryCursor,
+    query: &'it config::ParentQuery,
+    source_code: &'it [u8],
+}
+
+impl Iterator for AncestorRangeIterator<'_> {
+    type Item = std::ops::Range<usize>;
+    fn next(&mut self) -> Option<Self::Item> {
+        use tree_sitter::StreamingIterator;
+        // TODO interval arithmetic
+        while let Some(parent) = self.node.parent() {
+            let mut parent_matches =
+                self.cursor
+                    .matches(&self.query.query, parent, self.source_code);
+            let context_start = parent.range().start_point.row;
+            let mut context_end = parent.range().end_point;
+            let mut matched = false;
+            while let Some(parent_match) = parent_matches.next() {
+                for capture in parent_match
+                    .captures
+                    .iter()
+                    .filter(|c| Some(c.index) == self.query.index_exclude)
+                {
+                    if let Some(prev) = capture.node.prev_sibling() {
+                        context_end = context_end.min(prev.range().end_point);
+                    }
+                }
+                matched = true;
+            }
+            self.node = parent;
+            if matched {
+                return Some(context_start..end_point_to_end_line(context_end));
+            }
+        }
+        None
+    }
 }

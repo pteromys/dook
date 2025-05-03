@@ -37,6 +37,17 @@ impl RangeUnion {
     }
 }
 
+impl<I> From<I> for RangeUnion
+where
+    I: IntoIterator<Item = std::ops::Range<usize>>,
+{
+    fn from(value: I) -> Self {
+        let mut result = Self::default();
+        result.extend(value);
+        result
+    }
+}
+
 impl<'it> IntoIterator for &'it RangeUnion {
     type Item = std::ops::Range<usize>;
     type IntoIter = RangeUnionIterator<'it>;

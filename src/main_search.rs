@@ -196,13 +196,17 @@ pub fn search_one_file_with_one_injection(
                 params.local_pattern,
             ))
         } else {
-            SearchResult::Definitions(searches::find_definition(
+            let mut result = searches::find_definition(
                 file_bytes,
                 &tree,
                 &language_info,
                 params.local_pattern,
                 params.recurse,
-            ))
+            );
+            if let Some(injection) = injection {
+                result.ranges.extend(injection.context.iter());
+            }
+            SearchResult::Definitions(result)
         },
         injections: searches::find_injections(
             file_bytes,

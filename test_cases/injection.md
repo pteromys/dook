@@ -1,7 +1,9 @@
 Injection Test Case
 ===================
 
-## Nested Injections (rust macros in rust in markdown)
+## Nested Injections
+
+Rust macros in rust in markdown!
 
 ```Rust
 use enum_derive_2018::EnumFromInner;

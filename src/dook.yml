@@ -153,6 +153,9 @@ Markdown:
     (section [
       (atx_heading heading_content: (_) @name)
       (setext_heading heading_content: (_) @name)]) @def
+  parent_query: |
+    (section . (_) . (_) @exclude)
+    (fenced_code_block (code_fence_content) @exclude)
   injection_query: |
     (fenced_code_block
       (info_string (language) @lang)
@@ -256,6 +259,7 @@ Rust:
     (impl_item body: (_) @exclude)
     (struct_item body: (_) @exclude)
     (enum_item body: (_) @exclude)
+    (macro_invocation (token_tree) @exclude)
   injection_query: |
     (macro_invocation
       (token_tree) @injection.content

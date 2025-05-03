@@ -220,8 +220,8 @@ fn c() {
 #[test]
 fn markdown_injections() {
     let cases = [
-        ("Nordstrom", vec![10..11, 12..13]),
-        ("spartacus", vec![22..23, 26..27]),
+        ("Nordstrom", vec![3..4, 7..8, 10..11, 12..13, 14..15]),
+        ("spartacus", vec![19..20, 23..25, 27..29]),
     ];
     verify_multipass_examples(
         LanguageName::MARKDOWN,
