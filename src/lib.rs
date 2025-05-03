@@ -1,5 +1,5 @@
 mod config;
-mod inputs;
+pub mod inputs;
 mod language_name;
 pub mod loader;
 mod range_union;

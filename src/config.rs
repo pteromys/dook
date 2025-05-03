@@ -1,6 +1,3 @@
-// TODOs
-//     support fenced code blocks in markdown and rst
-//         likely to require regrouping
 use crate::language_name::LanguageName;
 use crate::loader;
 

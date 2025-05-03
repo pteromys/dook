@@ -3,8 +3,7 @@
     reason = "They're all declared as Vec<Range>"
 )]
 
-use dook::loader;
-use dook::searches;
+use dook::{inputs, loader, main_search, searches};
 use dook::{Config, LanguageName, QueryCompiler};
 
 type TestCase<'a> = (&'a str, Vec<std::ops::Range<usize>>, Vec<&'a str>);
@@ -51,6 +50,51 @@ fn verify_examples(language_name: LanguageName, source: &[u8], cases: &[TestCase
             search_result.recurse_names, *expect_recurses,
             "searching {:?} for {:?} recursed toward {:?}, expected {:?}",
             language_name, query, search_result.recurse_names, expect_recurses
+        );
+    }
+}
+
+type MultiPassTestCase<'a> = (&'a str, Vec<std::ops::Range<usize>>);
+
+fn verify_multipass_examples(
+    language_name: LanguageName,
+    source: &[u8],
+    cases: &[MultiPassTestCase],
+) {
+    let config = Config::load_default();
+    let target_dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
+    let mut language_loader =
+        loader::Loader::new(target_dir.clone(), Some(target_dir.clone()), false).expect(
+            "should have called tree_sitter_loader::Loader::with_parser_lib_path(), not new()",
+        );
+    let mut query_compiler = QueryCompiler::new(&config);
+    let input = inputs::LoadedFile {
+        bytes: source.into(),
+        language_name,
+    };
+    for (query, expect_ranges) in cases {
+        let current_pattern = regex::Regex::new(query).unwrap();
+        let local_pattern_str = String::from("^") + query + "$";
+        let local_pattern = regex::Regex::new(&local_pattern_str).unwrap();
+        let search_params = main_search::SearchParams {
+            config: &config,
+            local_pattern: &local_pattern,
+            current_pattern: &current_pattern,
+            only_names: false,
+            recurse: false,
+        };
+        let result = main_search::search_one_file(
+            &search_params,
+            inputs::SearchInput::Loaded(&input),
+            &mut language_loader,
+            &mut query_compiler,
+        )
+        .unwrap();
+        let result_vec: Vec<_> = result.ranges.iter().collect();
+        assert_eq!(
+            result_vec, *expect_ranges,
+            "searching {:?} for {:?} got {:?}, expected {:?}",
+            language_name, query, result_vec, expect_ranges
         );
     }
 }
@@ -171,4 +215,17 @@ fn c() {
         ("right", vec![25..30], vec![]),  // other function parameter
     ];
     verify_examples(LanguageName::C, include_bytes!("../test_cases/c.c"), &cases);
+}
+
+#[test]
+fn markdown_injections() {
+    let cases = [
+        ("Nordstrom", vec![10..11, 12..13]),
+        ("spartacus", vec![22..23, 26..27]),
+    ];
+    verify_multipass_examples(
+        LanguageName::MARKDOWN,
+        include_bytes!("../test_cases/injection.md"),
+        &cases,
+    );
 }
