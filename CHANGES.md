@@ -30,6 +30,7 @@ changelog 🧚
 - Fixes:
   - Search patterns with `|` no longer fail to restrict to whole-name match.
   - Fixed failing to match some recursion patterns.
+  - `--dump` now respects `--paging`.
 - Added recognitions:
   - names bound by destructuring in js, ts, tsx, python
   - named function expressions in ts/tsx

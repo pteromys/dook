@@ -297,12 +297,20 @@ pub struct Config {
 pub enum ConfigParseError {
     Deserialize(merde::MerdeError<'static>),
     UnknownLanguage(String),
+    NotUtf8(std::str::Utf8Error),
+    UnreadableFile(std::io::Error),
 }
 
 impl From<merde::MerdeError<'_>> for ConfigParseError {
     fn from(value: merde::MerdeError<'_>) -> Self {
         use merde::IntoStatic;
         Self::Deserialize(value.into_static())
+    }
+}
+
+impl From<std::str::Utf8Error> for ConfigParseError {
+    fn from(value: std::str::Utf8Error) -> Self {
+        Self::NotUtf8(value)
     }
 }
 
@@ -314,6 +322,10 @@ impl std::fmt::Display for ConfigParseError {
                 => write!(f, "{}", e),
             Self::UnknownLanguage(language)
                 => write!(f, "unknown language: {}", language),
+            Self::NotUtf8(e)
+                => write!(f, "{}", e),
+            Self::UnreadableFile(e)
+                => write!(f, "{}", e),
         }
     }
 }
@@ -353,10 +365,10 @@ impl Config {
 
     pub fn load(
         explicit_path: &Option<impl AsRef<std::path::Path>>,
-    ) -> std::io::Result<Option<Self>> {
+    ) -> Result<Option<Self>, ConfigParseError> {
         let config_bytes = match explicit_path {
             // explicitly requested file paths expose any errors reading
-            Some(p) => std::fs::read(p.as_ref())?,
+            Some(p) => std::fs::read(p.as_ref()).map_err(ConfigParseError::UnreadableFile)?,
             // the default file path is more forgiving
             None => match default_config_path() {
                 None => return Ok(None), // if there's no default path, just return None
@@ -374,16 +386,9 @@ impl Config {
                 },
             },
         };
-        let config_str = std::str::from_utf8(&config_bytes)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        let config_str = std::str::from_utf8(&config_bytes)?;
         let deserialize_result = Self::load_from_str(config_str);
-        match deserialize_result {
-            Ok(c) => Ok(Some(c)),
-            Err(e) => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                e.to_string(),
-            )),
-        }
+        deserialize_result.map(Some)
     }
 
     fn load_from_str(config_str: &str) -> Result<Self, ConfigParseError> {

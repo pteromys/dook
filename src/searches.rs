@@ -1,22 +1,13 @@
 use crate::language_name::LanguageName;
 use crate::{config, range_union};
 
-pub struct ParsedFile {
-    pub language_name: LanguageName,
-    pub tree: tree_sitter::Tree,
-}
-
 #[derive(Debug, Clone)]
 pub enum FileParseError {
-    UnknownLanguage,
-    UnsupportedLanguage(String),
     FailedToAttachLanguage {
         // probably version mismatch
         language_name: LanguageName,
         message: String,
     },
-    UnreadableFile(String),
-    EmptyStdin,
     InvalidFileRange {
         range: tree_sitter::Range,
         message: String,
@@ -27,83 +18,46 @@ pub enum FileParseError {
 impl std::fmt::Display for FileParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FileParseError::UnknownLanguage => write!(f, "unknown language"),
-            FileParseError::UnsupportedLanguage(language_name)
-                => write!(f, "unsupported language {:?}", language_name),
-            FileParseError::FailedToAttachLanguage { language_name, message}
+            Self::FailedToAttachLanguage { language_name, message}
                 => write!(f, "language {:?} incompatible with parser: {:?}", language_name, message),
-            FileParseError::UnreadableFile(message) => write!(f, "{}", message),
-            FileParseError::EmptyStdin => write!(f, "stdin is empty"),
-            FileParseError::InvalidFileRange { range, message }
+            Self::InvalidFileRange { range, message }
                 => write!(f, "tree_sitter rejected range restriction {:?}: {}", range, message),
         }
     }
 }
 
-pub fn detect_language_from_path(path: &std::path::Path) -> Result<LanguageName, FileParseError> {
-    use std::str::FromStr;
-    let language_name_str = hyperpolyglot::detect(path)
-        .map_err(|e| FileParseError::UnreadableFile(e.to_string()))?
-        .ok_or(FileParseError::UnknownLanguage)?
-        .language();
-    LanguageName::from_str(language_name_str)
-        .map_err(|_| FileParseError::UnsupportedLanguage(language_name_str.to_owned()))
+pub fn parse(
+    source_code: &[u8],
+    language_name: LanguageName,
+    language: &tree_sitter::Language,
+) -> Result<tree_sitter::Tree, FileParseError> {
+    parse_ranged(source_code, language_name, language, None)
 }
 
-#[cfg(feature = "stdin")]
-pub fn detect_language_from_bytes(bytes: &[u8]) -> Result<LanguageName, FileParseError> {
-    use std::str::FromStr;
-    let language_name_str = hyperpolyglot::detectors::classify(
-        std::str::from_utf8(bytes).map_err(|e| FileParseError::UnreadableFile(e.to_string()))?,
-        &[],
-    );
-    LanguageName::from_str(language_name_str)
-        .map_err(|_| FileParseError::UnsupportedLanguage(language_name_str.to_owned()))
-}
-
-#[cfg(not(feature = "stdin"))]
-pub fn detect_language_from_bytes(_: &[u8]) -> Result<LanguageName, FileParseError> {
-    Err(FileParseError::UnknownLanguage)
-}
-
-impl ParsedFile {
-    pub fn from_bytes_and_language(
-        source_code: &[u8],
-        language_name: LanguageName,
-        language: &tree_sitter::Language,
-    ) -> Result<Self, FileParseError> {
-        Self::from_bytes_and_language_ranged(source_code, language_name, language, None)
-    }
-
-    pub fn from_bytes_and_language_ranged(
-        source_code: &[u8],
-        language_name: LanguageName,
-        language: &tree_sitter::Language,
-        range: Option<tree_sitter::Range>,
-    ) -> Result<Self, FileParseError> {
-        let mut parser = tree_sitter::Parser::new();
+pub fn parse_ranged(
+    source_code: &[u8],
+    language_name: LanguageName,
+    language: &tree_sitter::Language,
+    range: Option<tree_sitter::Range>,
+) -> Result<tree_sitter::Tree, FileParseError> {
+    let mut parser = tree_sitter::Parser::new();
+    parser
+        .set_language(language)
+        .map_err(|e| FileParseError::FailedToAttachLanguage {
+            language_name,
+            message: e.to_string(),
+        })?;
+    if let Some(range) = range {
         parser
-            .set_language(language)
-            .map_err(|e| FileParseError::FailedToAttachLanguage {
-                language_name,
+            .set_included_ranges(&[range])
+            .map_err(|e| FileParseError::InvalidFileRange {
+                range,
                 message: e.to_string(),
             })?;
-        if let Some(range) = range {
-            parser
-                .set_included_ranges(&[range])
-                .map_err(|e| FileParseError::InvalidFileRange {
-                    range,
-                    message: e.to_string(),
-                })?;
-        }
-        let tree = parser
-            .parse(source_code, None)
-            .expect("parse() should have returned a tree if parser.set_language() was called");
-        Ok(Self {
-            language_name,
-            tree,
-        })
     }
+    Ok(parser
+        .parse(source_code, None)
+        .expect("parse() should have returned a tree if parser.set_language() was called"))
 }
 
 #[derive(Debug, Clone)]

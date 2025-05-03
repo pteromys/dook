@@ -12,8 +12,8 @@ impl RangeUnion {
             .or_insert(range.end);
     }
 
-    pub fn extend(&mut self, ranges: impl AsRef<[std::ops::Range<usize>]>) {
-        for range in ranges.as_ref() {
+    pub fn extend(&mut self, ranges: impl IntoIterator<Item = std::ops::Range<usize>>) {
+        for range in ranges {
             self.push(range);
         }
     }

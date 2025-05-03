@@ -12,9 +12,10 @@ use etcetera::AppStrategy;
 mod config;
 mod dep_resolution;
 mod dumptree;
+mod inputs;
 mod language_name;
 mod loader;
-mod paging;
+mod main_search;
 mod range_union;
 mod searches;
 
@@ -24,6 +25,16 @@ enum EnablementLevel {
     Auto,
     Never,
     Always,
+}
+
+impl From<EnablementLevel> for env_logger::fmt::WriteStyle {
+    fn from(value: EnablementLevel) -> Self {
+        match value {
+            EnablementLevel::Auto => Self::Auto,
+            EnablementLevel::Never => Self::Never,
+            EnablementLevel::Always => Self::Always,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum)]
@@ -113,7 +124,10 @@ struct Cli {
 macro_attr_2018::macro_attr! {
     #[derive(Debug, EnumFromInner!)]
     enum DookError {
-        IoError(std::io::Error),
+        CliParse(&'static str),
+        Regex(regex::Error),
+        ConfigParse(config::ConfigParseError),
+        Input(inputs::Error),
         FileParse(searches::FileParseError),
         LoaderError(loader::LoaderError),
         HomeDirError(etcetera::HomeDirError),
@@ -125,8 +139,11 @@ macro_attr_2018::macro_attr! {
 impl std::fmt::Display for DookError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            DookError::CliParse(e) => write!(f, "{}", e),
+            DookError::Regex(e) => write!(f, "{}", e),
+            DookError::ConfigParse(e) => write!(f, "{}", e),
+            DookError::Input(e) => write!(f, "{}", e),
             DookError::FileParse(e) => write!(f, "{}", e),
-            DookError::IoError(e) => write!(f, "{}", e),
             DookError::LoaderError(e) => write!(f, "{}", e),
             DookError::HomeDirError(e) => write!(f, "{}", e),
             DookError::RipGrepError(e) => write!(f, "{}", e),
@@ -138,8 +155,8 @@ impl std::fmt::Display for DookError {
 fn main() -> Result<std::process::ExitCode, DookError> {
     match main_inner() {
         // if stdout is gone, let's just leave quietly
-        Err(DookError::PagerWriteError(PagerWriteError::BrokenPipe(_))) => {
-            Ok(std::process::ExitCode::SUCCESS)
+        Err(DookError::PagerWriteError(PagerWriteError::BrokenPipe)) => {
+            Ok(std::process::ExitCode::from(141))
         }
         result => result,
     }
@@ -147,9 +164,6 @@ fn main() -> Result<std::process::ExitCode, DookError> {
 
 fn main_inner() -> Result<std::process::ExitCode, DookError> {
     use clap::Parser;
-    use std::str::FromStr;
-
-    env_logger::init();
 
     // grab cli args
     let cli = Cli::parse();
@@ -161,6 +175,51 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
         EnablementLevel::Never
     };
 
+    // set up output
+    let bat_size = console::Term::stdout().size_checked(); // before paging forks and we lose the tty
+    let enable_paging = if cli.paging != EnablementLevel::Auto {
+        cli.paging == EnablementLevel::Always
+    } else {
+        cli.plain < 2 && console::Term::stdout().is_term()
+    };
+    if enable_paging {
+        let pager_command = match std::env::var_os("PAGER") {
+            Some(value) => match value.into_string() {
+                Ok(s) => s,
+                Err(orig) => {
+                    eprintln!("ignoring PAGER environment variable because it contains non-utf8: {orig:?}");
+                    "less".to_string()
+                }
+            },
+            None => "less".to_string(),
+        };
+        let pager_command = if pager_command == "less" {
+            if cli.wrap == WrapMode::Never {
+                format!("{pager_command} -RFS")
+            } else {
+                format!("{pager_command} -RF")
+            }
+        } else {
+            pager_command
+        };
+        pager::Pager::with_pager(&pager_command).setup();
+    }
+
+    // set logging level
+    let mut logger_builder =
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn"));
+    if cli.verbose >= 1 {
+        logger_builder.filter_level(log::LevelFilter::Debug);
+    }
+    if enable_paging {
+        logger_builder.target(env_logger::Target::Stdout); // make logs visible in pager
+        logger_builder.write_style(use_color.into()); // follow coloring of output passed to pager
+    } else {
+        logger_builder.target(env_logger::Target::Stderr); // don't mix with likely-parsed output
+        logger_builder.write_style(cli.color.into()); // follow whatever --color says
+    }
+    logger_builder.init();
+
     // load config
     let custom_config = config::Config::load(&cli.config)?;
     let default_config = config::Config::load_default();
@@ -168,26 +227,21 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
         None => default_config,
         Some(custom_config) => default_config.merge(custom_config),
     };
-
     let parser_src_path = config::dirs()?.cache_dir().join("sources");
     let mut language_loader = loader::Loader::new(parser_src_path, None, cli.offline)?;
     let mut query_compiler = config::QueryCompiler::new(&merged_config);
 
     // check for dump-parse mode
     if let Some(dump_target) = cli.dump {
-        let file_bytes = std::fs::read(&dump_target)?;
-        let language_name = searches::detect_language_from_path(&dump_target)?;
+        let input = inputs::LoadedFile::load(dump_target)?;
         let parser_source = merged_config
-            .get_parser_source(language_name)
-            .ok_or_else(|| {
-                searches::FileParseError::UnsupportedLanguage(language_name.to_string())
-            })?;
+            .get_parser_source(input.language_name)
+            .ok_or_else(|| inputs::Error::UnsupportedLanguage(input.language_name.to_string()))?;
         let language = language_loader.get_language(parser_source)?.unwrap();
-        let file_info =
-            searches::ParsedFile::from_bytes_and_language(&file_bytes, language_name, &language)?;
+        let tree = searches::parse(&input.bytes, input.language_name, &language)?;
         dumptree::dump_tree(
-            &file_info.tree,
-            file_bytes.as_slice(),
+            &tree,
+            input.bytes.as_slice(),
             use_color == EnablementLevel::Always,
         );
         return Ok(std::process::ExitCode::SUCCESS);
@@ -197,64 +251,49 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
     let mut current_pattern = cli
         .pattern
         .as_ref()
-        .ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "pattern is required unless using --dump",
-            )
-        })?
+        .ok_or(DookError::CliParse(
+            "pattern is required unless using --dump",
+        ))?
         .to_owned();
     // store previous patterns to break --recurse cycles
     let mut local_patterns: std::vec::Vec<regex::Regex> = vec![];
-
-    // set up output
-    let enable_paging = if cli.paging != EnablementLevel::Auto {
-        cli.paging == EnablementLevel::Always
-    } else {
-        cli.plain < 2 && console::Term::stdout().is_term()
-    };
-    let mut pager = paging::MaybePager::new(enable_paging, cli.wrap == WrapMode::Never);
-    let bat_size = console::Term::stdout().size_checked();
 
     // deduplicate names found under --only-names
     let mut print_names: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     // parse stdin only once, and upfront, if asked to read it
     let parse_start = std::time::Instant::now();
-    let stdin = parse_stdin(&cli)?;
+    let stdin = load_stdin(&cli)?;
     let use_stdin = stdin.is_some();
-    if use_stdin && cli.verbose >= 1 {
+    if use_stdin {
         if let Some(stdin) = stdin.as_ref() {
-            write_output_line(
-                &mut pager,
-                format!(
-                    "V: parsed stdin as {} in {:?}",
-                    stdin.language_name,
-                    parse_start.elapsed(),
-                )
-                .as_bytes(),
-            )?;
+            log::debug!(
+                "parsed stdin as {} in {:?}",
+                stdin.language_name,
+                parse_start.elapsed(),
+            );
         }
     }
 
     for is_first_loop in std::iter::once(true).chain(std::iter::repeat(false)) {
         // track recursion
         let mut recurse_defs: std::vec::Vec<String> = vec![];
-        local_patterns.push(
-            regex::Regex::new(&(String::from("^(") + current_pattern.as_str() + ")$"))
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?,
-        );
+        local_patterns.push(regex::Regex::new(
+            &(String::from("^(") + current_pattern.as_str() + ")$"),
+        )?);
         // pattern to match all captured names against when searching through files
         let local_pattern = local_patterns
             .last()
             .expect("last() should exist on a vec we just pushed to");
+        let search_params = main_search::SearchParams {
+            config: &merged_config,
+            local_pattern,
+            current_pattern: &current_pattern,
+            only_names: cli.only_names,
+            recurse: cli.recurse,
+        };
         // pass 0: find candidate files with ripgrep
-        if cli.verbose >= 1 {
-            write_output_line(
-                &mut pager,
-                format!("V: invoking ripgrep with {:?}", local_pattern).as_bytes(),
-            )?;
-        }
+        log::debug!("invoking ripgrep with {:?}", local_pattern);
         let mut filenames: std::collections::VecDeque<Option<std::path::PathBuf>> =
             if use_stdin && is_first_loop {
                 std::collections::VecDeque::from([None])
@@ -272,266 +311,92 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
                     ripgrep_results.collect()
                 }
             };
-        if cli.verbose >= 1 {
-            let file_count = if use_stdin {
+        log::debug!(
+            "ripgrep found {} files",
+            if use_stdin {
                 filenames.len().saturating_sub(1)
             } else {
                 filenames.len()
-            };
-            write_output_line(
-                &mut pager,
-                format!("V: ripgrep found {} files", file_count).as_bytes(),
-            )?;
-        }
+            }
+        );
         // track import origins seen so far
-        let mut import_origins: std::collections::HashSet<String> =
+        let mut import_origins: std::collections::HashSet<(LanguageName, String)> =
             std::collections::HashSet::new();
         while let Some(path) = filenames.pop_front() {
-            if cli.verbose >= 1 {
-                match &path {
-                    None => write_output_line(&mut pager, "V: parsing stdin".as_bytes())?,
-                    Some(path) => {
-                        write_output_line(&mut pager, format!("V: parsing {:?}", path).as_bytes())?
-                    }
+            let search_input = match path.as_ref() {
+                Some(path) => inputs::SearchInput::Path(path),
+                None => inputs::SearchInput::Loaded(stdin.as_ref().expect(
+                    "oops we weren't given --stdin but somehow we queued stdin to search anyway",
+                )),
+            };
+
+            let results = match main_search::search_one_file(
+                &search_params,
+                search_input,
+                &mut language_loader,
+                &mut query_compiler,
+            ) {
+                Err(main_search::SinglePassError::Input(inputs::Error::UnreadableFile(
+                    message,
+                ))) => {
+                    log::warn!("Skipping unreadable {search_input}: {message}");
+                    continue;
+                }
+                Err(e) => {
+                    log::warn!("Skipping {search_input}: {e}");
+                    continue;
+                }
+                Ok(results) => results,
+            };
+            for name in results.matched_names {
+                if print_names.insert(name.clone()) {
+                    println!("{name}");
                 }
             }
-
-            // read the whole file as few times as possible:
-            // - only before traversing the injections tree
-            // - only after we know we'll be able to do anything with the language
-            let file_bytes: Vec<u8>;
-            let (file_bytes, root_language) = match &path {
-                None => {
-                    let stdin = stdin.as_ref().expect("oops we weren't given --stdin but somehow we queued stdin to search anyway");
-                    (stdin.bytes.as_slice(), stdin.language_name)
+            // It could be nice to do a single bat invocation in the
+            // rare case that consecutive recursions hit the same file,
+            // but printing results as they come gets in the way.
+            if !results.ranges.is_empty() {
+                match write_ranges(search_input, &results.ranges, &cli, use_color, bat_size) {
+                    // if stdout is gone, just leave quietly
+                    Err(PagerWriteError::BrokenPipe) => Err(PagerWriteError::BrokenPipe)?,
+                    // otherwise continue, printing if there are errors
+                    Err(e) => log::warn!("Error reading {search_input}: {e}"),
+                    Ok(_) => (),
                 }
-                Some(path) => {
-                    let language_name = match searches::detect_language_from_path(path) {
-                        Ok(language_name) => language_name,
-                        Err(e) => {
-                            let error_message = format!("Skipping {:?}: {}", &path, e);
-                            write_output_line(&mut pager, error_message.as_bytes())?;
-                            continue;
-                        }
-                    };
-                    file_bytes = match std::fs::read(path) {
-                        Ok(bytes) => bytes,
-                        Err(e) => {
-                            let error_message = format!("Skipping unreadable {:?}: {}", &path, e);
-                            write_output_line(&mut pager, error_message.as_bytes())?;
-                            continue;
-                        }
-                    };
-                    (file_bytes.as_slice(), language_name)
-                }
-            };
-            // parse the whole file, then injections
-            let mut injections: Vec<Option<searches::InjectionRange>> = vec![None];
-            while let Some(injection) = injections.pop() {
-                // determine language
-                let parse_start = std::time::Instant::now();
-                let language_name = match &injection {
-                    None => root_language,
-                    Some(injection) => {
-                        match injection
-                            .language_hint
-                            .as_ref()
-                            .and_then(|hint| LanguageName::from_str(hint).ok())
-                        {
-                            Some(hinted) => hinted,
-                            None => match searches::detect_language_from_bytes(
-                                &file_bytes[injection.range.start_byte..injection.range.end_byte],
-                            ) {
-                                Ok(detected) => detected,
-                                Err(e) => {
-                                    let error_message = format!(
-                                        "Skipping embedded document at {:?}:{:?}: {}",
-                                        &path, injection.range, e
-                                    );
-                                    write_output_line(&mut pager, error_message.as_bytes())?;
-                                    continue;
-                                }
-                            },
-                        }
-                    }
-                };
-                // get language parser
-                let parser_source =
-                    merged_config
-                        .get_parser_source(language_name)
-                        .ok_or_else(|| {
-                            searches::FileParseError::UnsupportedLanguage(language_name.to_string())
-                        })?;
-                let language = match language_loader.get_language(parser_source)? {
-                    None => {
-                        let error_message = format!(
-                            "Skipping {:?} for previously failed language {}",
-                            path, language_name
-                        );
-                        write_output_line(&mut pager, error_message.as_bytes())?;
-                        continue;
-                    }
-                    Some(language) => language,
-                };
-                // get search patterns
-                let language_info = match query_compiler.get_language_info(language_name, &language)
+            }
+            for name in results.recurse_names {
+                if local_patterns
+                    .iter()
+                    .all(|pattern| !pattern.is_match(&name))
                 {
-                    Ok(language_info) => language_info,
-                    Err(e) => {
-                        write_output_line(&mut pager, e.to_string().as_bytes())?;
-                        continue;
-                    }
-                };
-                let file_info = match searches::ParsedFile::from_bytes_and_language_ranged(
-                    file_bytes,
-                    language_name,
-                    &language,
-                    injection.clone().map(|i| i.range),
-                ) {
-                    Ok(f) => f,
-                    Err(e) => {
-                        let error_message = format!("Skipping {:?}: {}", &path, e);
-                        write_output_line(&mut pager, error_message.as_bytes())?;
-                        continue;
-                    }
-                };
-
-                // TODO expand this to sit between previous steps too
-                if cli.verbose >= 1 {
-                    write_output_line(
-                        &mut pager,
-                        format!(
-                            "V: parsed {:?} as {:?} in {:?}",
-                            injection.clone().map(|i| i.range),
-                            file_info.language_name,
-                            parse_start.elapsed()
-                        )
-                        .as_bytes(),
-                    )?;
+                    recurse_defs.push(name)
                 }
-
-                // search with tree_sitter
-                if cli.only_names {
-                    for name in searches::find_names(
-                        file_bytes,
-                        &file_info.tree,
-                        &language_info,
-                        local_pattern,
-                    ) {
-                        if print_names.insert(name.clone()) {
-                            write_output_line(&mut pager, name.as_bytes())?;
-                        }
-                    }
-                } else {
-                    let search_result = searches::find_definition(
-                        file_bytes,
-                        &file_info.tree,
-                        &language_info,
-                        local_pattern,
-                        true,
-                    );
-                    if cli.verbose >= 1 {
-                        write_output_line(
-                            &mut pager,
-                            format!("V: search results = {:?}", search_result,).as_bytes(),
-                        )?;
-                    }
-                    if !search_result.ranges.is_empty() {
-                        // It could be nice to do a single bat invocation in the
-                        // rare case that consecutive recursions hit the same file,
-                        // but printing results as they come gets in the way.
-                        match write_ranges(
-                            &mut pager,
-                            path.as_ref(),
-                            &search_result.ranges,
-                            &cli,
-                            use_color,
-                            bat_size,
-                            stdin.as_ref(),
-                        ) {
-                            // if stdout is gone, just leave quietly
-                            Err(PagerWriteError::BrokenPipe(_)) => {
-                                return Ok(std::process::ExitCode::SUCCESS)
+            }
+            // follow probable imports if we know about them
+            for (language_name, import_pattern) in results.import_origins {
+                if import_origins.insert((language_name, import_pattern.clone())) {
+                    log::debug!("sorting files matching {:?} to the front", import_pattern);
+                    filenames
+                        .make_contiguous()
+                        .sort_by_cached_key(|path| match path {
+                            None => 0,
+                            Some(path) => {
+                                dep_resolution::dissimilarity(language_name, &import_pattern, path)
                             }
-                            _ if pager.is_abandoned() => {
-                                return Ok(std::process::ExitCode::SUCCESS)
-                            }
-                            // for other errors, print and continue
-                            Err(e) => {
-                                let error_message = format!("Error reading {:?}: {}", path, e);
-                                pager.write_line(error_message.as_bytes())?;
-                            }
-                            Ok(_) => (),
-                        }
-                        recurse_defs.extend(search_result.recurse_names.into_iter().filter(
-                            |name| local_patterns.iter().all(|pattern| !pattern.is_match(name)),
-                        ));
-                    }
-
-                    // follow probable imports if we know about them
-                    for import_pattern in search_result.import_origins {
-                        if import_origins.insert(import_pattern.clone()) {
-                            if cli.verbose >= 1 {
-                                write_output_line(
-                                    &mut pager,
-                                    format!(
-                                        "V: sorting files matching {:?} to the front",
-                                        import_pattern
-                                    )
-                                    .as_bytes(),
-                                )?;
-                            }
-
-                            filenames
-                                .make_contiguous()
-                                .sort_by_cached_key(|path| match path {
-                                    None => 0,
-                                    Some(path) => dep_resolution::dissimilarity(
-                                        file_info.language_name,
-                                        &import_pattern,
-                                        path,
-                                    ),
-                                });
-                        }
-                    }
+                        });
                 }
-
-                let new_injections = searches::find_injections(
-                    file_bytes,
-                    &file_info.tree,
-                    &language_info,
-                    &current_pattern,
-                );
-                if cli.verbose >= 1 {
-                    write_output_line(
-                        &mut pager,
-                        format!("V: injections found: {:?}", new_injections).as_bytes(),
-                    )?;
-                }
-                injections.extend(new_injections.into_iter().map(Some));
             }
         }
 
         // recursion
         recurse_defs.dedup();
-        if cli.verbose >= 1 {
-            write_output_line(
-                &mut pager,
-                format!("V: recursion candidates: {:?}", recurse_defs).as_bytes(),
-            )?;
-        }
+        log::debug!("recursion candidates: {:?}", recurse_defs);
         if cli.recurse && !cli.only_names && recurse_defs.len() == 1 {
             current_pattern = regex::Regex::new(&regex::escape(&recurse_defs[0])).unwrap();
         } else {
             break;
         }
-    }
-
-    // wait for pager
-    match pager.wait() {
-        Ok(0) => (),
-        Ok(status) => eprintln!("Pager exited {}", status),
-        Err(e) => eprintln!("Pager died or vanished: {}", e),
     }
 
     // yeah yeah whatever
@@ -541,7 +406,7 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
 #[derive(Debug)]
 enum PagerWriteError {
     IoError(std::io::Error),
-    BrokenPipe(()),
+    BrokenPipe,
     ReaderDied(std::process::ExitStatus),
 }
 
@@ -549,7 +414,7 @@ impl std::fmt::Display for PagerWriteError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             PagerWriteError::IoError(e) => write!(f, "{}", e),
-            PagerWriteError::BrokenPipe(_) => write!(f, "broken pipe (someone closed our output)"),
+            PagerWriteError::BrokenPipe => write!(f, "broken pipe (someone closed our output)"),
             PagerWriteError::ReaderDied(status) => {
                 write!(f, "formatting excerpt exited {}", status)
             }
@@ -560,34 +425,25 @@ impl std::fmt::Display for PagerWriteError {
 impl From<std::io::Error> for PagerWriteError {
     fn from(value: std::io::Error) -> Self {
         match value.kind() {
-            std::io::ErrorKind::BrokenPipe => Self::BrokenPipe(()),
+            std::io::ErrorKind::BrokenPipe => Self::BrokenPipe,
             _ => Self::IoError(value),
         }
     }
 }
 
-fn write_output_line(pager: &mut paging::MaybePager, line: &[u8]) -> Result<(), PagerWriteError> {
-    match pager.write_line(line) {
-        Ok(x) => Ok(x),
-        Err(e) => {
-            if pager.is_abandoned() {
-                Err(PagerWriteError::BrokenPipe(()))
-            } else {
-                Err(e)?
-            }
-        }
+pub fn is_broken_pipe<T>(result: &std::io::Result<T>) -> bool {
+    match result {
+        Err(e) => e.kind() == std::io::ErrorKind::BrokenPipe,
+        Ok(_) => false,
     }
 }
 
-// this function signature is a disaster
 fn write_ranges(
-    pager: &mut paging::MaybePager,
-    path: Option<&std::path::PathBuf>,
+    input: inputs::SearchInput,
     ranges: &range_union::RangeUnion,
     cli: &Cli,
     use_color: EnablementLevel,
     bat_size: Option<(u16, u16)>,
-    stdin: Option<&Stdin>,
 ) -> Result<(), PagerWriteError> {
     use std::io::Write;
 
@@ -612,12 +468,11 @@ fn write_ranges(
         )
         .stderr(std::process::Stdio::inherit())
         .stdout(std::process::Stdio::piped());
-    let mut child = match path {
-        Some(path) => cmd.arg(path).spawn(),
-        None => {
-            let stdin = stdin.expect("oops we weren't given --stdin but somehow we claim we have results from stdin anyway");
+    let mut child = match input {
+        inputs::SearchInput::Path(path) => cmd.arg(path).spawn(),
+        inputs::SearchInput::Loaded(stdin) => {
             let mut child = cmd
-                .arg(format!("-l{}", stdin.language_name,))
+                .arg(format!("-l{}", stdin.language_name))
                 .stdin(std::process::Stdio::piped())
                 .spawn();
             if let Ok(child) = &mut child {
@@ -628,8 +483,7 @@ fn write_ranges(
                 let stdin_clone = stdin.bytes.clone();
                 std::thread::spawn(move || {
                     let result = child_stdin.write_all(&stdin_clone);
-                    if paging::is_broken_pipe(&result) {
-                    } else {
+                    if !is_broken_pipe(&result) {
                         result.unwrap()
                     }
                 });
@@ -637,12 +491,16 @@ fn write_ranges(
             child
         }
     }?;
-    // std::io::copy uses more efficient syscalls than explicitly reading and writing
+    // It'd be simpler to let `bat` write directly to our stdout, but we call
+    // std::io::copy ourselves (which uses more efficient syscalls than more
+    // explictly reading and writing) so that if the user quits the pager, we
+    // actually receive the SIGPIPE and can exit without burning more CPU or
+    // file I/O.
     let mut child_stdout = child
         .stdout
         .take()
         .expect("BUG: should have launched bat with stdout=piped()");
-    let copy_result = std::io::copy(&mut child_stdout, pager);
+    let copy_result = std::io::copy(&mut child_stdout, &mut std::io::stdout());
     let wait_result = child.wait();
     copy_result?;
     let exit_status = wait_result?;
@@ -653,33 +511,18 @@ fn write_ranges(
     }
 }
 
-struct Stdin {
-    bytes: Vec<u8>,
-    language_name: LanguageName,
-}
-
 #[cfg(not(feature = "stdin"))]
-fn parse_stdin(_: &Cli) -> Result<Option<Stdin>, searches::FileParseError> {
+fn load_stdin(_: &Cli) -> Result<Option<inputs::LoadedFile>, inputs::Error> {
     Ok(None)
 }
 
 #[cfg(feature = "stdin")]
-fn parse_stdin(cli: &Cli) -> Result<Option<Stdin>, searches::FileParseError> {
-    use std::io::Read;
-
+fn load_stdin(cli: &Cli) -> Result<Option<inputs::LoadedFile>, inputs::Error> {
     if !cli.stdin {
-        return Ok(None);
+        Ok(None)
+    } else {
+        inputs::LoadedFile::load_stdin().map(Some)
     }
-    let mut bytes = vec![];
-    let language_name = match std::io::stdin().read_to_end(&mut bytes) {
-        Err(e) => Err(searches::FileParseError::UnreadableFile(e.to_string())),
-        Ok(_) if bytes.is_empty() => Err(searches::FileParseError::EmptyStdin),
-        Ok(_) => searches::detect_language_from_bytes(&bytes),
-    }?;
-    Ok(Some(Stdin {
-        bytes,
-        language_name,
-    }))
 }
 
 #[derive(Debug)]
