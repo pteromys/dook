@@ -93,7 +93,7 @@ pub fn search_one_file(
                         i.range.end_point.row.saturating_add(1),
                     ),
                 };
-                log::warn!("Skipping {:?}: {}", source_description, e);
+                log::warn!("Skipping {}: {}", source_description, e);
                 continue;
             }
         };
