@@ -35,7 +35,7 @@ changelog 🧚
   - names bound by destructuring in js, ts, tsx, python
   - named function expressions in ts/tsx
   - parent object names in js/ts/tsx
-  - struct members and parent structs in rust
+  - struct/enum members and parent structs/enums in rust
 - Cache tree-sitter query compilation for 4x speedup.
 - Add bash and zsh completions.
 - Order search by likely imports to try to get results sooner (python).

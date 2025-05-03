@@ -229,6 +229,7 @@ Rust:
       ])
       (const_item name: (_) @name)
       (enum_item name: (_) @name)
+      (enum_variant name: (_) @name)
       (impl_item type: (_) @name)
       (impl_item trait: [
         (_) @name
@@ -254,6 +255,7 @@ Rust:
     (function_item body: (_) @exclude)
     (impl_item body: (_) @exclude)
     (struct_item body: (_) @exclude)
+    (enum_item body: (_) @exclude)
   injection_query: |
     (macro_invocation
       (token_tree) @injection.content
