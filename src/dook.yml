@@ -233,7 +233,13 @@ Rust:
       (const_item name: (_) @name)
       (enum_item name: (_) @name)
       (enum_variant name: (_) @name)
-      (impl_item type: (_) @name)
+      (impl_item type: [
+        (_) @name
+        (generic_type type: [
+          (_) @name
+          (scoped_identifier name: (_) @name)
+          (scoped_type_identifier name: (_) @name)])
+        (scoped_type_identifier name: (_) @name)])
       (impl_item trait: [
         (_) @name
         (generic_type type: [
@@ -260,6 +266,7 @@ Rust:
     (struct_item body: (_) @exclude)
     (enum_item body: (_) @exclude)
     (macro_invocation (token_tree) @exclude)
+    (trait_item body: (_) @exclude)
   injection_query: |
     (macro_invocation
       (token_tree) @injection.content

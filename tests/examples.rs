@@ -222,6 +222,21 @@ fn c() {
 }
 
 #[test]
+fn rust() {
+    let cases = [
+        ("PotorooTreat", vec![1..6, 12..16]),
+        ("Bug", vec![2..2, 5..5]),
+        ("Treat", vec![8..10, 12..16]),
+        ("eat", vec![8..9, 12..15]),
+    ];
+    verify_multipass_examples(
+        LanguageName::RUST,
+        include_bytes!("../test_cases/rust.rs"),
+        &cases,
+    );
+}
+
+#[test]
 fn markdown_injections() {
     let cases = [
         ("Nordstrom", vec![4..4, 8..8, 11..11, 13..13, 15..15]),
