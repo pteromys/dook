@@ -126,6 +126,7 @@ macro_attr_2018::macro_attr! {
         HomeDirError(etcetera::HomeDirError),
         RipGrepError(RipGrepError),
         PagerWriteError(PagerWriteError),
+        LanguageNotConfigured(main_search::LanguageNotConfigured),
     }
 }
 
@@ -141,6 +142,7 @@ impl std::fmt::Display for DookError {
             DookError::HomeDirError(e) => write!(f, "{}", e),
             DookError::RipGrepError(e) => write!(f, "{}", e),
             DookError::PagerWriteError(e) => write!(f, "{}", e),
+            DookError::LanguageNotConfigured(e) => write!(f, "{}", e),
         }
     }
 }
@@ -229,7 +231,7 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
         let input = inputs::LoadedFile::load(dump_target)?;
         let parser_source = merged_config
             .get_parser_source(input.language_name)
-            .ok_or_else(|| inputs::Error::UnsupportedLanguage(input.language_name.to_string()))?;
+            .ok_or(main_search::LanguageNotConfigured(input.language_name))?;
         let language = language_loader.get_language(parser_source)?.unwrap();
         let tree = searches::parse(&input.bytes, input.language_name, &language)?;
         dumptree::dump_tree(

@@ -491,11 +491,11 @@ impl std::fmt::Display for QueryCompilerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::LanguageIsNotInConfig(language_name)
-                => write!(f, "language {:?} not found in any config", language_name),
+                => write!(f, "language {language_name} not found in any config"),
             Self::HasFailedBefore(language_name)
-                => write!(f, "skipping due to previous error for language {:?}", language_name),
+                => write!(f, "skipping due to previous error for language {language_name}"),
             Self::GetLanguageInfoError(language_name, e)
-                => write!(f, "in {:?}: {}", language_name, e),
+                => write!(f, "in {language_name}: {e}"),
         }
     }
 }

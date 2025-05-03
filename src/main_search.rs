@@ -16,7 +16,17 @@ pub struct LanguagePreviouslyFailed(LanguageName);
 impl std::fmt::Display for LanguagePreviouslyFailed {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self(language_name) = self;
-        write!(f, "language {} previously failed to load", language_name)
+        write!(f, "{language_name} parser previously failed to load")
+    }
+}
+
+#[derive(Debug)]
+pub struct LanguageNotConfigured(pub LanguageName);
+
+impl std::fmt::Display for LanguageNotConfigured {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self(language_name) = self;
+        write!(f, "no parser configured for {language_name}")
     }
 }
 
@@ -36,6 +46,7 @@ macro_attr_2018::macro_attr! {
         LoaderError(loader::LoaderError),
         QueryCompilerError(config::QueryCompilerError),
         LanguagePreviouslyFailed(LanguagePreviouslyFailed),
+        LanguageNotConfigured(LanguageNotConfigured),
     }
 }
 
@@ -47,6 +58,7 @@ impl std::fmt::Display for SinglePassError {
             SinglePassError::LoaderError(e) => write!(f, "{}", e),
             SinglePassError::QueryCompilerError(e) => write!(f, "{}", e),
             SinglePassError::LanguagePreviouslyFailed(e) => write!(f, "{}", e),
+            SinglePassError::LanguageNotConfigured(e) => write!(f, "{}", e),
         }
     }
 }
@@ -171,7 +183,7 @@ pub fn search_one_file_with_one_injection(
     let parser_source = params
         .config
         .get_parser_source(language_name)
-        .ok_or_else(|| inputs::Error::UnsupportedLanguage(language_name.to_string()))?;
+        .ok_or(LanguageNotConfigured(language_name))?;
     let language = language_loader
         .get_language(parser_source)?
         .ok_or(LanguagePreviouslyFailed(language_name))?;

@@ -18,10 +18,10 @@ pub enum FileParseError {
 impl std::fmt::Display for FileParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::FailedToAttachLanguage { language_name, message}
-                => write!(f, "language {:?} incompatible with parser: {:?}", language_name, message),
+            Self::FailedToAttachLanguage { language_name, message }
+                => write!(f, "language {language_name} incompatible with parser: {message}"),
             Self::InvalidFileRange { range, message }
-                => write!(f, "tree_sitter rejected range restriction {:?}: {}", range, message),
+                => write!(f, "tree_sitter rejected range restriction {range:?}: {message}"),
         }
     }
 }
