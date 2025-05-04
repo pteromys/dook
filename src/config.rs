@@ -96,9 +96,10 @@ struct ConfigV2 {
     languages: std::collections::HashMap<String, LanguageConfigV1>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Default)]
 pub struct LanguageConfigV3 {
     parser: Option<loader::ParserSource>,
+    extends: Option<String>,
     definition_query: Option<String>,
     sibling_node_types: Option<std::vec::Vec<String>>,
     parent_query: Option<String>,
@@ -108,7 +109,7 @@ pub struct LanguageConfigV3 {
 }
 
 merde::derive! {
-    impl (Deserialize) for struct LanguageConfigV3 { parser, definition_query, sibling_node_types, parent_query, recurse_query, import_query, injection_query }
+    impl (Deserialize) for struct LanguageConfigV3 { parser, extends, definition_query, sibling_node_types, parent_query, recurse_query, import_query, injection_query }
 }
 
 #[derive(Debug, PartialEq)]
@@ -153,6 +154,7 @@ impl From<LanguageConfigV1> for LanguageConfigV3 {
     fn from(value: LanguageConfigV1) -> Self {
         Self {
             parser: value.parser,
+            extends: None,
             definition_query: match value.match_patterns.len() {
                 0 => None,
                 _ => Some(join_strs(
@@ -459,6 +461,37 @@ impl Config {
     }
 }
 
+impl LanguageConfigV3 {
+    pub fn rebase(&mut self, base: &LanguageConfigV3) {
+        fn concat(left: Option<&String>, right: Option<String>) -> Option<String> {
+            match left {
+                None => right,
+                Some(left) => match right {
+                    None => Some(left.clone()),
+                    Some(right) => Some(left.clone() + &right),
+                },
+            }
+        }
+        if self.parser.is_none() {
+            self.parser = base.parser.clone();
+        }
+        self.extends = base.extends.clone();
+        self.definition_query =
+            concat(base.definition_query.as_ref(), self.definition_query.take());
+        if let Some(base_sibs) = base.sibling_node_types.as_ref() {
+            if let Some(sibs) = self.sibling_node_types.as_mut() {
+                sibs.extend_from_slice(base_sibs);
+            } else {
+                self.sibling_node_types = Some(base_sibs.clone());
+            }
+        }
+        self.parent_query = concat(base.parent_query.as_ref(), self.parent_query.take());
+        self.recurse_query = concat(base.recurse_query.as_ref(), self.recurse_query.take());
+        self.import_query = concat(base.import_query.as_ref(), self.import_query.take());
+        self.injection_query = concat(base.injection_query.as_ref(), self.injection_query.take());
+    }
+}
+
 pub struct QueryCompiler<'a> {
     config: &'a Config,
     cache: std::collections::HashMap<LanguageName, Option<std::rc::Rc<LanguageInfo>>>,
@@ -469,6 +502,7 @@ pub enum QueryCompilerError {
     LanguageIsNotInConfig(LanguageName),
     HasFailedBefore(LanguageName),
     GetLanguageInfoError(LanguageName, GetLanguageInfoError),
+    ExtendsUnknownLanguage(LanguageName, String),
 }
 
 #[derive(Debug)]
@@ -496,6 +530,8 @@ impl std::fmt::Display for QueryCompilerError {
                 => write!(f, "skipping due to previous error for language {language_name}"),
             Self::GetLanguageInfoError(language_name, e)
                 => write!(f, "in {language_name}: {e}"),
+            Self::ExtendsUnknownLanguage(language_name, extends)
+                => write!(f, "{language_name} extends unknown language {extends:#?}"),
         }
     }
 }
@@ -540,12 +576,23 @@ impl<'a> QueryCompiler<'a> {
             }
             std::collections::hash_map::Entry::Vacant(e) => e,
         };
-        let language_config = self
-            .config
-            .languages
-            .get(&language_name)
-            .ok_or(QueryCompilerError::LanguageIsNotInConfig(language_name))?;
-        match LanguageInfo::new(language, language_config) {
+        let mut language_config = LanguageConfigV3 {
+            extends: Some(language_name.to_string()),
+            ..Default::default()
+        };
+        while let Some(extends) = language_config.extends.as_ref() {
+            use std::str::FromStr;
+            let base_language = LanguageName::from_str(extends).map_err(|_| {
+                QueryCompilerError::ExtendsUnknownLanguage(language_name, extends.to_owned())
+            })?;
+            let base_config = self
+                .config
+                .languages
+                .get(&base_language)
+                .ok_or(QueryCompilerError::LanguageIsNotInConfig(base_language))?;
+            language_config.rebase(base_config);
+        }
+        match LanguageInfo::new(language, &language_config) {
             Ok(x) => Ok(entry.insert(Some(std::rc::Rc::new(x))).clone().unwrap()),
             Err(e) => {
                 entry.insert(None);

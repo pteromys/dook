@@ -91,6 +91,14 @@ CSS:
     (id_selector (id_name) @name) @def
   parent_query: |
     (rule_set)
+GLSL:
+  parser:
+    tarball:
+      name: glsl
+      sha256hex: 65d098362f9ffd47e9bf5916133ed24ccf934b01027debdaeeb46ff3ec41caf0
+      subdirectory: tree-sitter-glsl-0.2.0/src
+      url: https://github.com/tree-sitter-grammars/tree-sitter-glsl/archive/refs/tags/v0.2.0.tar.gz
+  extends: C
 Go:
   parser:
     tarball:
@@ -172,10 +180,6 @@ JavaScript:
       url: https://github.com/tree-sitter/tree-sitter-javascript/archive/refs/tags/v0.23.1.tar.gz
   definition_query: |
     [
-      (variable_declarator name: (_) @name)
-      (array_pattern (identifier) @name)
-      (pair_pattern value: (identifier) @name)
-      (shorthand_property_identifier_pattern) @name
       (function_declaration name: (_) @name)
       (function_expression name: (_) @name)
       (method_definition name: (_) @name)
@@ -183,8 +187,10 @@ JavaScript:
         (identifier) @name
         (assignment_pattern left: (identifier) @name)
         (rest_pattern (identifier) @name)])
-      (class_declaration name: (_) @name)
-      (field_definition property: (_) @name)
+      (variable_declarator name: (_) @name)
+      (array_pattern (identifier) @name)
+      (pair_pattern value: (identifier) @name)
+      (shorthand_property_identifier_pattern) @name
       (assignment_expression left: [
         (_) @name
         (member_expression property: (_) @name)
@@ -193,6 +199,8 @@ JavaScript:
       (pair key: [
         (property_identifier) @name
         (string (string_fragment) @name)])
+      (class_declaration name: (_) @name)
+      (field_definition property: (_) @name)
     ] @def
   sibling_node_types:
   - comment
@@ -396,54 +404,8 @@ TSX:
       sha256hex: 2d324af0616a692cc6fcaea35442a816decb2ef0d05242953cb1feb15a5dc72d
       subdirectory: tsx/src
       url: https://github.com/tree-sitter/tree-sitter-typescript/releases/download/v0.23.2/tree-sitter-typescript.tar.xz
+  extends: TypeScript
   definition_query: |
-    [
-      (function_signature name: (_) @name)
-      (function_declaration name: (_) @name)
-      (function_expression name: (_) @name)
-      (method_signature name: (_) @name)
-      (method_definition name: (_) @name)
-      (abstract_method_signature name: (_) @name)
-      (abstract_class_declaration name: (_) @name)
-      (module name: (_) @name)
-      (required_parameter pattern: [
-        (identifier) @name
-        (rest_pattern (identifier) @name)])
-      (variable_declarator name: (_) @name)
-      (array_pattern (identifier) @name)
-      (pair_pattern value: (identifier) @name)
-      (shorthand_property_identifier_pattern) @name
-      (assignment_expression left: [
-        (_) @name
-        (member_expression property: (_) @name)
-        (member_expression object: (_) @name property: ((property_identifier) @prototype (#eq? @prototype "prototype")))
-        (member_expression object: (member_expression object: (_) @name property: ((property_identifier) @prototype (#eq? @prototype "prototype"))))])
-      (class_declaration name: (_) @name)
-      (type_alias_declaration name: (_) @name)
-      (interface_declaration name: (_) @name)
-      (enum_declaration name: (_) @name)
-      (enum_assignment name: (_) @name)
-      (_ key: [(property_identifier) @name (string (string_fragment) @name)] value: (_))
-      (_ key: [(property_identifier) @name (string (string_fragment) @name)] type: (_))
-      (jsx_attribute (property_identifier) @name)
-      (property_signature (property_identifier) @name)
-      (public_field_definition name: (property_identifier) @name)
-      (import_statement (import_clause (named_imports (import_specifier alias: (_) @name))))
-      (export_statement (export_clause (export_specifier alias: (_) @name)))
-    ] @def
-    (enum_body (property_identifier) @name @def)
-  sibling_node_types:
-  - comment
+    (jsx_attribute (property_identifier) @name) @def
   parent_query: |
-    (function_declaration body: (_) @exclude)
-    (method_definition body: (_) @exclude)
-    (arrow_function body: (_) @exclude)
-    (class_declaration body: (_) @exclude)
-    (type_alias_declaration value: (_) @exclude)
-    (interface_declaration body: (_) @exclude)
-    (enum_declaration body: (_) @exclude)
-    (property_signature type: (_) @exclude)
-    (pair value: (_) @exclude)
-    (variable_declarator value: (_) @exclude)
-    (assignment_expression right: (_) @exclude)
     (jsx_opening_element attribute: (_) @exclude)

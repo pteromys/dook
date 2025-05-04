@@ -43,7 +43,7 @@ Also attempts to find assignments, class definitions, etc—because why should y
 
 ## Supported languages
 
-- C, C++
+- C, C++, GLSL
 - Go
 - HTML, CSS, Markdown
 - JavaScript, TypeScript, TSX
