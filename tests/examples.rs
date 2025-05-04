@@ -224,6 +224,8 @@ fn c() {
         ("second_order", vec![26..32], vec![]),  // function definition
         ("callback", vec![26..30], vec![]),  // function pointer
         ("right", vec![26..30], vec![]),  // other function parameter
+        ("val", vec![36..37], vec![]),  // assignment
+        ("ptr", vec![36..36, 38..38], vec![]),  // assignment by one level of pointer
     ];
     verify_examples(LanguageName::C, include_bytes!("../test_cases/c.c"), &cases);
 }

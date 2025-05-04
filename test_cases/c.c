@@ -33,6 +33,11 @@ int* second_order(
 
 #     undef SEVEN
 
+void assign(int* ptr, int val) {
+	val += 5;
+	*ptr = val;
+}
+
 int main(int argc, char ** argv) {
 	return 0;
 }

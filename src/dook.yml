@@ -30,6 +30,10 @@ C:
         (pointer_declarator declarator: (pointer_declarator declarator: (function_declarator declarator: (_) @name)))
         (pointer_declarator declarator: (pointer_declarator declarator: (pointer_declarator declarator: (function_declarator declarator: (_) @name))))])
       (_ declarator: [(identifier) (field_identifier) (type_identifier)] @name)
+      (assignment_expression left: [
+        (identifier) @name
+        (pointer_expression argument: (_) @name)
+        (pointer_expression argument: (pointer_expression argument: (_) @name))])
     ] @def
   sibling_node_types:
   - comment
@@ -67,6 +71,8 @@ C++:
       (field_initializer (field_identifier) @name)
       (assignment_expression left: [
         (_) @name
+        (pointer_expression argument: (_) @name)
+        (pointer_expression argument: (pointer_expression argument: (_) @name))
         (field_expression field: (_) @name)])
     ] @def
   sibling_node_types:
