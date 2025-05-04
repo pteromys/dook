@@ -25,6 +25,10 @@ _dook_module()
 			COMPREPLY=( $(compgen -W "auto never character" -- "$cur") )
 			return 0
 			;;
+		'--download')
+			COMPREPLY=( $(compgen -W "ask yes no" -- "$cur") )
+			return 0
+			;;
 		'--dump'|'--config')
 			COMPREPLY=( $(compgen -f -o filenames -- "$cur") )
 			return 0

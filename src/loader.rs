@@ -1,3 +1,4 @@
+use crate::downloads_policy::{can_download, DownloadsPolicy};
 use crate::language_name::LanguageName;
 
 // Structs
@@ -6,7 +7,7 @@ pub struct Loader {
     cache: std::collections::HashMap<ParserSource, Option<std::rc::Rc<tree_sitter::Language>>>,
     loader: tree_sitter_loader::Loader,
     sources_dir: std::path::PathBuf,
-    offline: bool,
+    downloads_policy: DownloadsPolicy,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -107,6 +108,7 @@ pub enum LoaderError {
         src_path: std::path::PathBuf,
     },
     LanguageWasNotBuiltIn(String),
+    NotAllowedToDownload(String),
 }
 
 // this is just here because anyhow::Error doesn't claim to implement std::error::Error;
@@ -157,6 +159,9 @@ impl std::fmt::Display for LoaderError {
             Self::LanguageWasNotBuiltIn(language_name)
                 => write!(f, "Support for language {:?} was not enabled at compile time",
                           language_name),
+            Self::NotAllowedToDownload(url)
+                => write!(f, "User did not allow us to download from {:?}",
+                          url),
         }
     }
 }
@@ -200,7 +205,7 @@ impl Loader {
     pub fn new(
         sources_dir: std::path::PathBuf,
         parser_lib_path: Option<std::path::PathBuf>,
-        offline: bool,
+        downloads_policy: DownloadsPolicy,
     ) -> Result<Self, LoaderError> {
         Ok(Self {
             cache: std::collections::HashMap::new(),
@@ -215,7 +220,7 @@ impl Loader {
                 }
             },
             sources_dir,
-            offline,
+            downloads_policy,
         })
     }
 
@@ -230,7 +235,7 @@ impl Loader {
                     &mut self.loader,
                     source,
                     &self.sources_dir,
-                    self.offline,
+                    self.downloads_policy,
                 )?)))
                 .clone(),
         })
@@ -241,7 +246,7 @@ fn get_language(
     loader: &mut tree_sitter_loader::Loader,
     source: &ParserSource,
     sources_dir: &std::path::Path,
-    offline: bool,
+    downloads_policy: DownloadsPolicy,
 ) -> Result<tree_sitter::Language, LoaderError> {
     use std::str::FromStr;
     match source {
@@ -265,16 +270,14 @@ fn get_language(
                 },
             };
             let local_repo = sources_dir.join(repo_name);
-            if !offline {
-                std::fs::create_dir_all(&local_repo).map_err(|e| {
-                    LoaderError::CannotMakeDirectoryForGit {
-                        repo_url: git.clone.to_owned(),
-                        repo_path: local_repo.to_owned(),
-                        source: e,
-                    }
-                })?;
-                git_clone(&git.clone, &git.commit, &local_repo)?;
-            }
+            std::fs::create_dir_all(&local_repo).map_err(|e| {
+                LoaderError::CannotMakeDirectoryForGit {
+                    repo_url: git.clone.to_owned(),
+                    repo_path: local_repo.to_owned(),
+                    source: e,
+                }
+            })?;
+            git_clone(&git.clone, &git.commit, &local_repo, downloads_policy)?;
             let src_path = match &git.subdirectory {
                 None => local_repo,
                 Some(sub) => local_repo.join(sub),
@@ -283,7 +286,12 @@ fn get_language(
         }
         ParserSource::TarballSource(tarball) => {
             let tarball_path = sources_dir.join(&tarball.name).with_extension("tar");
-            download_tarball(&tarball.url, &tarball.sha256hex, &tarball_path, offline)?;
+            download_tarball(
+                &tarball.url,
+                &tarball.sha256hex,
+                &tarball_path,
+                downloads_policy,
+            )?;
             if let Some(language) = load_language_if_tarball_older(loader, tarball, sources_dir) {
                 if tree_sitter::MIN_COMPATIBLE_LANGUAGE_VERSION <= language.abi_version()
                     && language.abi_version() <= tree_sitter::LANGUAGE_VERSION
@@ -381,6 +389,7 @@ fn git_clone(
     repo_url: &str,
     checkoutable: &str,
     dest_path: &std::path::Path,
+    downloads_policy: DownloadsPolicy,
 ) -> Result<(), LoaderError> {
     use os_str_bytes::OsStrBytes;
     use os_str_bytes::OsStrBytesExt;
@@ -403,6 +412,9 @@ fn git_clone(
             });
         }
     } else {
+        if !can_download(repo_url, downloads_policy) {
+            return Err(LoaderError::NotAllowedToDownload(repo_url.to_owned()));
+        }
         let mut command = std::process::Command::new("git");
         command
             .args(["clone", "--filter=blob:none", repo_url])
@@ -426,6 +438,9 @@ fn git_clone(
     )
     .is_err()
     {
+        if !can_download(repo_url, downloads_policy) {
+            return Err(LoaderError::NotAllowedToDownload(repo_url.to_owned()));
+        }
         git(dest_path, ["fetch"]).map_err(|e| LoaderError::ChildProcessFailed {
             verb: format!("fetch {:?} to {:?}", repo_url, dest_path),
             source: e,
@@ -477,7 +492,7 @@ fn download_tarball(
     tarball_url: &str,
     sha256hex: &str,
     tarball_path: &std::path::Path,
-    offline: bool, // error out instead if we'd have to download
+    downloads_policy: DownloadsPolicy,
 ) -> Result<(), LoaderError> {
     let mut expected: [u8; 32] = [0; 32];
     base16ct::mixed::decode(sha256hex, &mut expected).map_err(|e| {
@@ -489,12 +504,16 @@ fn download_tarball(
     })?;
 
     // if not offline, check hash. if no match (or no file), download again
+    let offline = downloads_policy == DownloadsPolicy::No;
     let redownload = !offline
         && match hash_file_at_path(tarball_path) {
             Ok(existing_hash) => existing_hash.as_slice() != expected,
             Err(_) => true,
         };
     if redownload {
+        if !can_download(tarball_url, downloads_policy) {
+            return Err(LoaderError::NotAllowedToDownload(tarball_url.to_owned()));
+        }
         let mut command = std::process::Command::new("curl");
         command
             .args(["--output"])

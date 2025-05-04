@@ -1,4 +1,5 @@
 mod config;
+pub mod downloads_policy;
 pub mod inputs;
 mod language_name;
 pub mod loader;

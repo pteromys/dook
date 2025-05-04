@@ -21,7 +21,9 @@ _dook () {
 		'--color=[When to output color]:output color?:((auto\:"(default) if output seems to be a color console" never\:no always\:yes))' \
 		'--paging=[When to start a pager]:start a pager?:((auto\:"(default) if output is directly to console" never\:no always\:yes))' \
 		'--wrap=[When to wrap long lines]:wrap long lines?:(auto never character)' \
+		'--download=[Whether to download parsers if needed]:what to do if we need to download a parser?:((ask\:"(default) ask for confirmation (disables paging)" no\:"skip the file" yes\:"download without asking"))' \
 		{'(--chop-long-lines)-S','(-S)--chop-long-lines'}'[Alias for --wrap=never]' \
+		'--offline[Alias for --download=no]' \
 		'*'{'-p','--plain'}'[Apply no styling; specify twice to disable paging]' \
 		+ '(recursion)' \
 		{'-r','--recurse'}"[Recurse if the there's exactly one way to do so]" \
@@ -29,7 +31,6 @@ _dook () {
 		+ '(special_action)' \
 		'--dump=[Dump syntax tree of a file]:file to dump:_files' \
 		'--only-names[Print only names matching the pattern]' \
-		'--offline[Use only already-downloaded parsers]' \
 		'--verbose[Print progress messages]' \
 		{'-h','--help'}'[Print help]' \
 		'*: :{_dook_symbols}'

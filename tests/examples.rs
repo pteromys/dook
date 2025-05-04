@@ -3,6 +3,7 @@
     reason = "They're all declared as Vec<Range>"
 )]
 
+use dook::downloads_policy::get_downloads_policy;
 use dook::{inputs, loader, main_search, searches};
 use dook::{Config, LanguageName, QueryCompiler};
 
@@ -11,10 +12,13 @@ type TestCase<'a> = (&'a str, Vec<std::ops::Range<usize>>, Vec<&'a str>);
 fn verify_examples(language_name: LanguageName, source: &[u8], cases: &[TestCase]) {
     let config = Config::load_default();
     let target_dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
-    let mut language_loader =
-        loader::Loader::new(target_dir.clone(), Some(target_dir.clone()), false).expect(
-            "should have called tree_sitter_loader::Loader::with_parser_lib_path(), not new()",
-        );
+    let downloads_policy = get_downloads_policy();
+    let mut language_loader = loader::Loader::new(
+        target_dir.clone(),
+        Some(target_dir.clone()),
+        downloads_policy,
+    )
+    .expect("should have called tree_sitter_loader::Loader::with_parser_lib_path(), not new()");
 
     let parser_source = config.get_parser_source(language_name).unwrap();
     let language = language_loader
@@ -67,10 +71,13 @@ fn verify_multipass_examples(
 ) {
     let config = Config::load_default();
     let target_dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
-    let mut language_loader =
-        loader::Loader::new(target_dir.clone(), Some(target_dir.clone()), false).expect(
-            "should have called tree_sitter_loader::Loader::with_parser_lib_path(), not new()",
-        );
+    let downloads_policy = get_downloads_policy();
+    let mut language_loader = loader::Loader::new(
+        target_dir.clone(),
+        Some(target_dir.clone()),
+        downloads_policy,
+    )
+    .expect("should have called tree_sitter_loader::Loader::with_parser_lib_path(), not new()");
     let mut query_compiler = QueryCompiler::new(&config);
     let input = inputs::LoadedFile {
         bytes: source.into(),

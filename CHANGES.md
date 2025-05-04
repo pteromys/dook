@@ -4,8 +4,11 @@ changelog 🧚
 ## Unreleased
 
 - Dynamically load parsers with tree-sitter-loader.
-  - Sources go in ~/.cache/dook/sources.
+  - Parsers are downloaded from configured urls to ~/.cache/dook/sources.
   - Compiled parsers go in ~/.cache/tree-sitter/lib.
+  - Because [it alarms users if we don't ask](https://github.com/zed-industries/zed/issues/12589),
+    ask for confirmation before each download until the user writes YES or NO
+    to ~/.config/dook/downloads_policy.txt .
   - Some parsers can be built in at compile time, using the following features:
     - `static_python`
 - Support injections (embedded fragments in another language):
@@ -28,7 +31,7 @@ changelog 🧚
   - `--wrap` and `-S` (forwarded to `bat`)
   - `--stdin` to search on stdin, gated by `stdin` feature
   - `--only-names` to print matching names but not defs (used for completions)
-  - `--offline` to not download anything
+  - `--download=yes|no|ask` to control whether to download parsers (`--offline` = `--download=no`)
   - `--verbose` to litter console output with unstructured progress messages
 - Fixes:
   - Search patterns with `|` no longer fail to restrict to whole-name match.

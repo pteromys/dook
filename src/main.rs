@@ -1,9 +1,11 @@
+use crate::downloads_policy::DownloadsPolicy;
 use crate::language_name::LanguageName;
 use enum_derive_2018::EnumFromInner;
 use etcetera::AppStrategy;
 
 mod config;
 mod dep_resolution;
+mod downloads_policy;
 mod dumptree;
 mod inputs;
 mod language_name;
@@ -64,10 +66,10 @@ struct Cli {
 
     #[arg(
         long,
-        help = format!("Use only the parsers already downloaded to {:?}", match config::dirs() {
+        help = format!("Use only the parsers already downloaded to {:?} {}", match config::dirs() {
             Ok(d) => d.cache_dir().join("sources"),
             Err(_) => std::path::PathBuf::new(),
-        })
+        }, "(alias for --download=no)")
     )]
     offline: bool,
 
@@ -84,6 +86,19 @@ struct Cli {
         default_value_if("_chop_long_lines", clap::builder::ArgPredicate::IsPresent, "never")
     )]
     wrap: WrapMode,
+
+    #[arg(
+        long,
+        value_enum,
+        required = false,
+        help = format!(
+            "What to do if we need to download a parser (default: {} from {})",
+            downloads_policy::get_downloads_policy(), match downloads_policy::settings_path() {
+                None => "built-in".to_string(),
+                Some(path) => format!("{path:?}"),
+            })
+    )]
+    download: Option<DownloadsPolicy>,
 
     /// Alias for --wrap=never.
     #[arg(short = 'S', long)]
@@ -170,14 +185,30 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
         EnablementLevel::Never
     };
 
-    // set up output
-    let bat_size = console::Term::stdout().size_checked(); // before paging forks and we lose the tty
-    let enable_paging = if cli.paging != EnablementLevel::Auto {
-        cli.paging == EnablementLevel::Always
-    } else {
-        cli.plain < 2 && console::Term::stdout().is_term()
+    // get terminal properties before paging forks and we lose the tty
+    let bat_size = console::Term::stdout().size_checked();
+    let is_term = console::Term::stdout().is_term();
+
+    // see how much approval we have to download parsers
+    let downloads_policy = match cli.offline {
+        true => DownloadsPolicy::No,
+        false => cli
+            .download
+            .unwrap_or_else(downloads_policy::get_downloads_policy),
     };
-    if enable_paging {
+    let downloads_policy = if downloads_policy == DownloadsPolicy::Ask && !is_term {
+        DownloadsPolicy::No
+    } else {
+        downloads_policy
+    };
+
+    // set up output
+    let enable_paging = match cli.paging {
+        EnablementLevel::Always => true,
+        EnablementLevel::Never => false,
+        EnablementLevel::Auto => cli.plain < 2 && is_term,
+    };
+    if enable_paging && downloads_policy != DownloadsPolicy::Ask {
         let pager_command = match std::env::var_os("PAGER") {
             Some(value) => match value.into_string() {
                 Ok(s) => s,
@@ -206,7 +237,7 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
     if cli.verbose >= 1 {
         logger_builder.filter_level(log::LevelFilter::Debug);
     }
-    if enable_paging {
+    if enable_paging && downloads_policy != DownloadsPolicy::Ask {
         logger_builder.target(env_logger::Target::Stdout); // make logs visible in pager
         logger_builder.write_style(use_color.into()); // follow coloring of output passed to pager
     } else {
@@ -223,7 +254,7 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
         Some(custom_config) => default_config.merge(custom_config),
     };
     let parser_src_path = config::dirs()?.cache_dir().join("sources");
-    let mut language_loader = loader::Loader::new(parser_src_path, None, cli.offline)?;
+    let mut language_loader = loader::Loader::new(parser_src_path, None, downloads_policy)?;
     let mut query_compiler = config::QueryCompiler::new(&merged_config);
 
     // check for dump-parse mode
@@ -239,6 +270,7 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
             input.bytes.as_slice(),
             use_color == EnablementLevel::Always,
         );
+        maybe_warn_paging_vs_downloads_policy(enable_paging, downloads_policy);
         return Ok(std::process::ExitCode::SUCCESS);
     }
 
@@ -394,8 +426,23 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
         }
     }
 
+    maybe_warn_paging_vs_downloads_policy(enable_paging, downloads_policy);
+
     // yeah yeah whatever
     Ok(std::process::ExitCode::SUCCESS)
+}
+
+fn maybe_warn_paging_vs_downloads_policy(enable_paging: bool, downloads_policy: DownloadsPolicy) {
+    if enable_paging && downloads_policy == DownloadsPolicy::Ask {
+        log::warn!(
+            "{}{}",
+            "Paging was disabled so we could ask to download new parsers if the need arose.",
+            " To enable paging, use --download=yes or --download=no.",
+        );
+        if let Some(settings_path) = downloads_policy::settings_path() {
+            log::warn!("Or write YES or NO to {settings_path:#?}");
+        }
+    }
 }
 
 #[derive(Debug)]
