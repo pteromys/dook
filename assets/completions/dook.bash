@@ -52,7 +52,7 @@ _dook_module()
 	esac
 
 	# ask dook to search for names
-	COMPREPLY=( $(compgen -W '$( dook --only-names "${cur}.*" 2>/dev/null )' -- "$cur" ) )
+	COMPREPLY=( $(compgen -W '$( dook -i --only-names "${cur}.*" 2>/dev/null )' -- "$cur" ) )
 }
 
 complete -F _dook_module dook

@@ -31,6 +31,7 @@ _dook () {
 		+ '(special_action)' \
 		'--dump=[Dump syntax tree of a file]:file to dump:_files' \
 		'--only-names[Print only names matching the pattern]' \
+		'*'{'-i','--ignore-case'}'[Case insensitive; 2x to interconvert kebab/camel/snake case]' \
 		'--verbose[Print progress messages]' \
 		{'-h','--help'}'[Print help]' \
 		'*: :{_dook_symbols}'
@@ -46,7 +47,7 @@ _dook_symbols () {
 		# this is probably wrong if TAB is bound to expand-or-complete-prefix
 		# and the word under the cursor is quoted
 		# so hopefully everybody stayed on the default expand-or-complete
-		symbols=( $(dook --only-names "${PREFIX}.*${SUFFIX}" 2>/dev/null) )
+		symbols=( $(dook -i --only-names "${PREFIX}.*${SUFFIX}" 2>/dev/null) )
 	fi
 	# Send contents of `symbols` to zsh completion.
 	# The description here overrides the one at the end of the _arguments call.

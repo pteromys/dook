@@ -13,6 +13,7 @@ mod loader;
 mod main_search;
 mod range_union;
 mod searches;
+mod uncase;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum)]
 enum EnablementLevel {
@@ -44,7 +45,7 @@ enum WrapMode {
 /// dook: Definition lookup in your code.
 struct Cli {
     /// Regex to match against symbol names. Required unless using --dump.
-    pattern: Option<regex::Regex>,
+    pattern: Option<String>,
 
     /// Config file path (default: ~/.config/dook/dook.yml)
     #[arg(
@@ -124,6 +125,10 @@ struct Cli {
     #[arg(long)]
     only_names: bool,
 
+    /// 1x = ignore lower vs upper; 2x = interconvert camelCase etc
+    #[arg(short, long, action = clap::ArgAction::Count)]
+    ignore_case: u8,
+
     /// Print unstructured messages about progress, for diagnostics.
     #[arg(short, long, action = clap::ArgAction::Count)]
     verbose: u8,
@@ -142,6 +147,7 @@ macro_attr_2018::macro_attr! {
         RipGrepError(RipGrepError),
         PagerWriteError(PagerWriteError),
         LanguageNotConfigured(main_search::LanguageNotConfigured),
+        NotRecaseable(uncase::NotRecaseable),
     }
 }
 
@@ -158,6 +164,7 @@ impl std::fmt::Display for DookError {
             DookError::RipGrepError(e) => write!(f, "{}", e),
             DookError::PagerWriteError(e) => write!(f, "{}", e),
             DookError::LanguageNotConfigured(e) => write!(f, "{}", e),
+            DookError::NotRecaseable(e) => write!(f, "{}", e),
         }
     }
 }
@@ -275,13 +282,17 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
     }
 
     // get pattern
-    let mut current_pattern = cli
-        .pattern
-        .as_ref()
-        .ok_or(DookError::CliParse(
-            "pattern is required unless using --dump",
-        ))?
-        .to_owned();
+    let raw_pattern = cli.pattern.to_owned().ok_or(DookError::CliParse(
+        "pattern is required unless using --dump",
+    ))?;
+    let raw_pattern = if cli.ignore_case >= 2 {
+        uncase::uncase(raw_pattern)?
+    } else {
+        raw_pattern
+    };
+    let mut current_pattern = regex::RegexBuilder::new(&raw_pattern)
+        .case_insensitive(cli.ignore_case > 0)
+        .build()?;
     // store previous patterns to break --recurse cycles
     let mut local_patterns: std::vec::Vec<regex::Regex> = vec![];
 
@@ -303,11 +314,14 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
     }
 
     for is_first_loop in std::iter::once(true).chain(std::iter::repeat(false)) {
+        let ignore_case = is_first_loop && cli.ignore_case > 0;
         // track recursion
         let mut recurse_defs: std::vec::Vec<String> = vec![];
-        local_patterns.push(regex::Regex::new(
-            &(String::from("^(") + current_pattern.as_str() + ")$"),
-        )?);
+        local_patterns.push(
+            regex::RegexBuilder::new(&(String::from("^(") + current_pattern.as_str() + ")$"))
+                .case_insensitive(ignore_case)
+                .build()?,
+        );
         // pattern to match all captured names against when searching through files
         let local_pattern = local_patterns
             .last()
@@ -320,24 +334,25 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
             recurse: cli.recurse,
         };
         // pass 0: find candidate files with ripgrep
-        log::debug!("invoking ripgrep with {:?}", local_pattern);
-        let mut filenames: std::collections::VecDeque<Option<std::path::PathBuf>> =
-            if use_stdin && is_first_loop {
-                std::collections::VecDeque::from([None])
-            } else {
-                let ripgrep_results = ripgrep(&current_pattern).filter_map(|f| match f {
-                    Ok(p) => Some(Some(p)),
-                    Err(e) => {
-                        eprintln!("{}", e);
-                        None
-                    }
-                });
-                if use_stdin {
-                    std::iter::once(None).chain(ripgrep_results).collect()
-                } else {
-                    ripgrep_results.collect()
+        log::debug!("invoking ripgrep with {:?}", current_pattern);
+        let mut filenames: std::collections::VecDeque<Option<std::path::PathBuf>> = if use_stdin
+            && is_first_loop
+        {
+            std::collections::VecDeque::from([None])
+        } else {
+            let ripgrep_results = ripgrep(&current_pattern, ignore_case).filter_map(|f| match f {
+                Ok(p) => Some(Some(p)),
+                Err(e) => {
+                    eprintln!("{}", e);
+                    None
                 }
-            };
+            });
+            if use_stdin {
+                std::iter::once(None).chain(ripgrep_results).collect()
+            } else {
+                ripgrep_results.collect()
+            }
+        };
         log::debug!(
             "ripgrep found {} files",
             if use_stdin {
@@ -590,12 +605,16 @@ impl std::fmt::Display for RipGrepError {
 
 fn ripgrep(
     pattern: &regex::Regex,
+    ignore_case: bool,
 ) -> Box<dyn Iterator<Item = Result<std::path::PathBuf, RipGrepError>>> {
     use os_str_bytes::OsStrBytes;
     use std::io::BufRead;
 
     // first-pass search with ripgrep
     let mut rg = std::process::Command::new("rg");
+    if ignore_case {
+        rg.arg("-i");
+    }
     let mut child = match rg
         .args(["-l", "--sort=path", "-0"])
         .arg(pattern.as_str())

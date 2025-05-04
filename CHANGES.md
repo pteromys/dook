@@ -34,6 +34,9 @@ changelog 🧚
   - `--only-names` to print matching names but not defs (used for completions)
   - `--download=yes|no|ask` to control whether to download parsers (`--offline` = `--download=no`)
   - `--verbose` to litter console output with unstructured progress messages
+  - `--ignore-case` (or `-i`) to search case-insensitively. Use twice to search
+    kebab/camel/snake/[whatever supported](https://crates.io/crates/heck) cases
+    in one go.
 - Fixes:
   - Search patterns with `|` no longer fail to restrict to whole-name match.
   - Fixed failing to match some recursion patterns seemingly at random.

@@ -380,6 +380,7 @@ dependencies = [
  "enum-derive-2018",
  "env_logger",
  "etcetera",
+ "heck",
  "hyperpolyglot",
  "libloading",
  "log",
