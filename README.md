@@ -47,8 +47,10 @@ Also attempts to find assignments, class definitions, etc—because why should y
 - Go
 - HTML, CSS, Markdown
 - JavaScript, TypeScript, TSX
+- Lua
 - Python
 - Rust
+- Shell (everything is just assumed to be bash)
 
 ## Alternatives and prior art
 

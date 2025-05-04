@@ -20,6 +20,8 @@ changelog 🧚
   - html (look up heading text and id and name attributes)
   - css (look up any ruleset involving a class or id selector)
   - glsl
+  - bash
+  - lua
 - Config file format version 3 (never released v2):
   - Add integer "_version" field.
   - Switch to yaml since we use a lot of multi-line strings.
