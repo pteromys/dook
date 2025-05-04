@@ -181,6 +181,7 @@ fn main() -> Result<std::process::ExitCode, DookError> {
 
 fn main_inner() -> Result<std::process::ExitCode, DookError> {
     use clap::Parser;
+    use std::io::Write;
 
     // grab cli args
     let cli = Cli::parse();
@@ -237,6 +238,7 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
         };
         pager::Pager::with_pager(&pager_command).setup();
     }
+    let mut stdout = std::io::stdout();
 
     // set logging level
     let mut logger_builder =
@@ -276,7 +278,8 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
             &tree,
             input.bytes.as_slice(),
             use_color == EnablementLevel::Always,
-        );
+        )
+        .map_err(PagerWriteError::from)?;
         maybe_warn_paging_vs_downloads_policy(enable_paging, downloads_policy);
         return Ok(std::process::ExitCode::SUCCESS);
     }
@@ -343,7 +346,7 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
             let ripgrep_results = ripgrep(&current_pattern, ignore_case).filter_map(|f| match f {
                 Ok(p) => Some(Some(p)),
                 Err(e) => {
-                    eprintln!("{}", e);
+                    log::error!("{e}");
                     None
                 }
             });
@@ -392,7 +395,7 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
             };
             for name in results.matched_names {
                 if print_names.insert(name.clone()) {
-                    println!("{name}");
+                    writeln!(stdout, "{name}").map_err(PagerWriteError::from)?;
                 }
             }
             // It could be nice to do a single bat invocation in the

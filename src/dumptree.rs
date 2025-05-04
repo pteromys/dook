@@ -3,7 +3,9 @@ pub fn dump_tree<I: AsRef<[u8]>, T: tree_sitter::TextProvider<I>>(
     tree: &tree_sitter::Tree,
     mut text_provider: T,
     use_color: bool,
-) {
+) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut stdout = std::io::stdout();
     let mut depth: usize = 0;
     let mut sibling_idx = std::vec::Vec::<usize>::new();
     let mut cursor = tree.walk();
@@ -16,26 +18,28 @@ pub fn dump_tree<I: AsRef<[u8]>, T: tree_sitter::TextProvider<I>>(
     'treewalk: loop {
         let node = cursor.node();
         // indent
-        print!("{}", String::from(" ").repeat(depth));
+        write!(stdout, "{}", String::from(" ").repeat(depth))?;
         // parent's field name if it's there
         if let Some(parent) = node.parent() {
             if let Some(field_name) = parent
                 .field_name_for_child(*sibling_idx.last().unwrap() as u32 /* mod 2**32 */)
             {
-                print!(
+                write!(
+                    stdout,
                     "{}{}{}:{} ",
                     color_fieldname, field_name, color_eq, color_end
-                );
+                )?;
             }
         }
         if node.child_count() > 0 {
-            println!(
+            writeln!(
+                stdout,
                 "{}({}{}{}",
                 color_paren,
                 color_nodekind,
                 node.kind(),
                 color_end
-            );
+            )?;
         } else {
             let node_content = text_provider
                 .text(node)
@@ -43,7 +47,8 @@ pub fn dump_tree<I: AsRef<[u8]>, T: tree_sitter::TextProvider<I>>(
                 .collect::<Vec<_>>()
                 .concat();
             if node.is_named() {
-                println!(
+                writeln!(
+                    stdout,
                     "{}({}{}{} = {}{:?}{}){}",
                     color_paren,
                     color_nodekind,
@@ -53,20 +58,21 @@ pub fn dump_tree<I: AsRef<[u8]>, T: tree_sitter::TextProvider<I>>(
                     node_content,
                     color_paren,
                     color_end
-                );
+                )?;
             } else {
-                println!("{}{:?}{}", color_literal, node_content, color_end);
+                writeln!(stdout, "{}{:?}{}", color_literal, node_content, color_end)?;
             }
         }
         // depth first traversal
         if !cursor.goto_first_child() {
             while !cursor.goto_next_sibling() {
-                println!(
+                writeln!(
+                    stdout,
                     "{}{}){}",
                     String::from(" ").repeat(depth),
                     color_paren,
                     color_end
-                );
+                )?;
                 if !cursor.goto_parent() {
                     break 'treewalk;
                 } else {
@@ -82,4 +88,5 @@ pub fn dump_tree<I: AsRef<[u8]>, T: tree_sitter::TextProvider<I>>(
             sibling_idx.push(0)
         }
     }
+    Ok(())
 }
