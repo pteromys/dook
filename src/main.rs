@@ -175,6 +175,12 @@ fn main() -> Result<std::process::ExitCode, DookError> {
         Err(DookError::PagerWriteError(PagerWriteError::BrokenPipe)) => {
             Ok(std::process::ExitCode::from(141))
         }
+        // on error, print a message and then exit 1
+        Err(e) => {
+            log::error!("{e}");
+            Ok(std::process::ExitCode::FAILURE)
+        }
+        // forward Ok unmodified
         result => result,
     }
 }
