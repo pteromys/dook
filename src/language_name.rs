@@ -1,3 +1,5 @@
+use crate::language_aliases::LANGUAGE_CANONICAL_NAMES;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LanguageName(&'static str);
 
@@ -43,6 +45,10 @@ impl LanguageName {
 impl std::str::FromStr for LanguageName {
     type Err = UnknownLanguageError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = match LANGUAGE_CANONICAL_NAMES.get(&s.to_lowercase()) {
+            Some(s) => *s,
+            None => s,
+        };
         if let Ok(hyperpolyglot_language) = hyperpolyglot::Language::try_from(s) {
             return Ok(Self(hyperpolyglot_language.name));
         }

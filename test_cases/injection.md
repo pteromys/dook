@@ -25,8 +25,12 @@ Two totally counts as multiple, right?
 static const int spartacus;
 ```
 
-```Python
+```pY
 spartacus: int
+```
+
+```sh
+spartacus=5
 ```
 
 ### Whee

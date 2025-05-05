@@ -249,7 +249,7 @@ fn rust() {
 fn markdown_injections() {
     let cases = [
         ("Nordstrom", vec![4..4, 8..8, 11..11, 13..13, 15..15]),
-        ("spartacus", vec![20..20, 24..25, 28..29]),
+        ("spartacus", vec![20..20, 24..25, 28..29, 32..33]),
     ];
     verify_multipass_examples(
         LanguageName::MARKDOWN,

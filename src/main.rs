@@ -8,6 +8,7 @@ mod dep_resolution;
 mod downloads_policy;
 mod dumptree;
 mod inputs;
+mod language_aliases;
 mod language_name;
 mod loader;
 mod main_search;
