@@ -62,3 +62,10 @@ impl std::fmt::Display for LanguageName {
         write!(f, "{}", language_name_str)
     }
 }
+
+impl AsRef<str> for LanguageName {
+    fn as_ref(&self) -> &'static str {
+        let Self(inner) = self;
+        inner
+    }
+}

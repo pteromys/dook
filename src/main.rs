@@ -144,10 +144,10 @@ macro_attr_2018::macro_attr! {
         Input(inputs::Error),
         FileParse(searches::FileParseError),
         LoaderError(loader::LoaderError),
+        QueryCompilerError(config::QueryCompilerError),
         HomeDirError(etcetera::HomeDirError),
         RipGrepError(RipGrepError),
         PagerWriteError(PagerWriteError),
-        LanguageNotConfigured(main_search::LanguageNotConfigured),
         NotRecaseable(uncase::NotRecaseable),
     }
 }
@@ -161,10 +161,10 @@ impl std::fmt::Display for DookError {
             DookError::Input(e) => write!(f, "{}", e),
             DookError::FileParse(e) => write!(f, "{}", e),
             DookError::LoaderError(e) => write!(f, "{}", e),
+            DookError::QueryCompilerError(e) => write!(f, "{}", e),
             DookError::HomeDirError(e) => write!(f, "{}", e),
             DookError::RipGrepError(e) => write!(f, "{}", e),
             DookError::PagerWriteError(e) => write!(f, "{}", e),
-            DookError::LanguageNotConfigured(e) => write!(f, "{}", e),
             DookError::NotRecaseable(e) => write!(f, "{}", e),
         }
     }
@@ -270,17 +270,14 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
         Some(custom_config) => default_config.merge(custom_config),
     };
     let parser_src_path = config::dirs()?.cache_dir().join("sources");
-    let mut language_loader = loader::Loader::new(parser_src_path, None, downloads_policy)?;
-    let mut query_compiler = config::QueryCompiler::new(&merged_config);
+    let language_loader = loader::Loader::new(parser_src_path, None, downloads_policy)?;
+    let mut query_compiler = config::QueryCompiler::new(merged_config, language_loader);
 
     // check for dump-parse mode
     if let Some(dump_target) = cli.dump {
         let input = inputs::LoadedFile::load(dump_target)?;
-        let parser_source = merged_config
-            .get_parser_source(input.language_name)
-            .ok_or(main_search::LanguageNotConfigured(input.language_name))?;
-        let language = language_loader.get_language(parser_source)?.unwrap();
-        let tree = searches::parse(&input.bytes, input.language_name, &language)?;
+        let language_info = query_compiler.get_language_info(input.language_name)?;
+        let tree = searches::parse(&input.bytes, input.language_name, &language_info.language)?;
         dumptree::dump_tree(
             &tree,
             input.bytes.as_slice(),
@@ -337,7 +334,6 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
             .last()
             .expect("last() should exist on a vec we just pushed to");
         let search_params = main_search::SearchParams {
-            config: &merged_config,
             local_pattern,
             current_pattern: &current_pattern,
             only_names: cli.only_names,
@@ -385,7 +381,6 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
             let results = match main_search::search_one_file(
                 &search_params,
                 search_input,
-                &mut language_loader,
                 &mut query_compiler,
             ) {
                 Err(main_search::SinglePassError::Input(inputs::Error::UnreadableFile(

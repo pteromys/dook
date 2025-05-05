@@ -10,28 +10,7 @@ pub struct SingleFileResults {
     pub import_origins: Vec<(LanguageName, String)>,
 }
 
-#[derive(Debug)]
-pub struct LanguagePreviouslyFailed(LanguageName);
-
-impl std::fmt::Display for LanguagePreviouslyFailed {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let Self(language_name) = self;
-        write!(f, "{language_name} parser previously failed to load")
-    }
-}
-
-#[derive(Debug)]
-pub struct LanguageNotConfigured(pub LanguageName);
-
-impl std::fmt::Display for LanguageNotConfigured {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let Self(language_name) = self;
-        write!(f, "no parser configured for {language_name}")
-    }
-}
-
 pub struct SearchParams<'a> {
-    pub config: &'a config::Config,
     pub local_pattern: &'a regex::Regex,
     pub current_pattern: &'a regex::Regex,
     pub only_names: bool,
@@ -45,8 +24,6 @@ macro_attr_2018::macro_attr! {
         FileParse(searches::FileParseError),
         LoaderError(loader::LoaderError),
         QueryCompilerError(config::QueryCompilerError),
-        LanguagePreviouslyFailed(LanguagePreviouslyFailed),
-        LanguageNotConfigured(LanguageNotConfigured),
     }
 }
 
@@ -57,8 +34,6 @@ impl std::fmt::Display for SinglePassError {
             SinglePassError::FileParse(e) => write!(f, "{}", e),
             SinglePassError::LoaderError(e) => write!(f, "{}", e),
             SinglePassError::QueryCompilerError(e) => write!(f, "{}", e),
-            SinglePassError::LanguagePreviouslyFailed(e) => write!(f, "{}", e),
-            SinglePassError::LanguageNotConfigured(e) => write!(f, "{}", e),
         }
     }
 }
@@ -66,7 +41,6 @@ impl std::fmt::Display for SinglePassError {
 pub fn search_one_file(
     params: &SearchParams,
     input: inputs::SearchInput,
-    language_loader: &mut loader::Loader,
     query_compiler: &mut config::QueryCompiler,
 ) -> Result<SingleFileResults, SinglePassError> {
     let mut results = SingleFileResults::default();
@@ -88,7 +62,6 @@ pub fn search_one_file(
     while let Some(injection) = injections.pop() {
         let pass_results = match search_one_file_with_one_injection(
             params,
-            language_loader,
             query_compiler,
             file_bytes,
             root_language,
@@ -147,7 +120,6 @@ pub struct SinglePassResults {
 
 pub fn search_one_file_with_one_injection(
     params: &SearchParams,
-    language_loader: &mut loader::Loader,
     query_compiler: &mut config::QueryCompiler,
     file_bytes: &[u8],
     root_language: LanguageName,
@@ -183,19 +155,12 @@ pub fn search_one_file_with_one_injection(
     );
     // get language parser
     let parse_start = std::time::Instant::now();
-    let parser_source = params
-        .config
-        .get_parser_source(language_name)
-        .ok_or(LanguageNotConfigured(language_name))?;
-    let language = language_loader
-        .get_language(parser_source)?
-        .ok_or(LanguagePreviouslyFailed(language_name))?;
+    let language_info = query_compiler.get_language_info(language_name)?;
     // parse file contents
-    let language_info = query_compiler.get_language_info(language_name, &language)?;
     let tree = searches::parse_ranged(
         file_bytes,
         language_name,
-        &language,
+        &language_info.language,
         injection.map(|i| i.range),
     )?;
     log::debug!("parsed in {:?}", parse_start.elapsed());

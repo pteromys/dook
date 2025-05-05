@@ -4,7 +4,6 @@ use crate::language_name::LanguageName;
 // Structs
 
 pub struct Loader {
-    cache: std::collections::HashMap<ParserSource, Option<std::rc::Rc<tree_sitter::Language>>>,
     loader: tree_sitter_loader::Loader,
     sources_dir: std::path::PathBuf,
     downloads_policy: DownloadsPolicy,
@@ -208,7 +207,6 @@ impl Loader {
         downloads_policy: DownloadsPolicy,
     ) -> Result<Self, LoaderError> {
         Ok(Self {
-            cache: std::collections::HashMap::new(),
             loader: match parser_lib_path {
                 None => tree_sitter_loader::Loader::new().map_err(|e| {
                     LoaderError::CannotFindAppDirectory {
@@ -227,18 +225,13 @@ impl Loader {
     pub fn get_language(
         &mut self,
         source: &ParserSource,
-    ) -> Result<Option<std::rc::Rc<tree_sitter::Language>>, LoaderError> {
-        Ok(match self.cache.entry(source.clone()) {
-            std::collections::hash_map::Entry::Occupied(e) => e.get().clone(),
-            std::collections::hash_map::Entry::Vacant(e) => e
-                .insert(Some(std::rc::Rc::new(get_language(
-                    &mut self.loader,
-                    source,
-                    &self.sources_dir,
-                    self.downloads_policy,
-                )?)))
-                .clone(),
-        })
+    ) -> Result<tree_sitter::Language, LoaderError> {
+        get_language(
+            &mut self.loader,
+            source,
+            &self.sources_dir,
+            self.downloads_policy,
+        )
     }
 }
 

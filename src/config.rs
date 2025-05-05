@@ -455,10 +455,6 @@ impl Config {
         }
         self
     }
-
-    pub fn get_parser_source(&self, language_name: LanguageName) -> Option<&loader::ParserSource> {
-        self.languages.get(&language_name)?.parser.as_ref()
-    }
 }
 
 impl LanguageConfigV3 {
@@ -492,21 +488,24 @@ impl LanguageConfigV3 {
     }
 }
 
-pub struct QueryCompiler<'a> {
-    config: &'a Config,
+pub struct QueryCompiler {
+    config: Config,
+    language_loader: loader::Loader,
     cache: std::collections::HashMap<LanguageName, Option<std::rc::Rc<LanguageInfo>>>,
 }
 
 #[derive(Debug)]
 pub enum QueryCompilerError {
-    LanguageIsNotInConfig(LanguageName),
     HasFailedBefore(LanguageName),
     GetLanguageInfoError(LanguageName, GetLanguageInfoError),
-    ExtendsUnknownLanguage(LanguageName, String),
 }
 
 #[derive(Debug)]
 pub enum GetLanguageInfoError {
+    LanguageIsNotInConfig(LanguageName),
+    ParserNotConfigured,
+    LoaderError(loader::LoaderError),
+    ExtendsUnknownLanguage(LanguageName, String),
     QueryCompileFailed {
         query_source: String,
         query_error: tree_sitter::QueryError,
@@ -524,14 +523,10 @@ pub enum GetLanguageInfoError {
 impl std::fmt::Display for QueryCompilerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::LanguageIsNotInConfig(language_name)
-                => write!(f, "language {language_name} not found in any config"),
             Self::HasFailedBefore(language_name)
                 => write!(f, "skipping due to previous error for language {language_name}"),
             Self::GetLanguageInfoError(language_name, e)
                 => write!(f, "in {language_name}: {e}"),
-            Self::ExtendsUnknownLanguage(language_name, extends)
-                => write!(f, "{language_name} extends unknown language {extends:#?}"),
         }
     }
 }
@@ -540,6 +535,14 @@ impl std::fmt::Display for QueryCompilerError {
 impl std::fmt::Display for GetLanguageInfoError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::LanguageIsNotInConfig(language_name)
+                => write!(f, "language {language_name} not found in any config"),
+            Self::ParserNotConfigured
+                => write!(f, "no parser configured for language or any of its ancestors"),
+            Self::LoaderError(e)
+                => write!(f, "failed to load parser: {e}"),
+            Self::ExtendsUnknownLanguage(language_name, extends)
+                => write!(f, "{language_name} extends unknown language {extends:#?}"),
             Self::QueryCompileFailed { query_source, query_error }
                 => write!(f, "cannot compile query {:?}: {}", query_source, query_error),
             Self::UnrecognizedNodeType(node_type)
@@ -553,10 +556,11 @@ impl std::fmt::Display for GetLanguageInfoError {
     }
 }
 
-impl<'a> QueryCompiler<'a> {
-    pub fn new(config: &'a Config) -> Self {
+impl QueryCompiler {
+    pub fn new(config: Config, language_loader: loader::Loader) -> Self {
         Self {
             config,
+            language_loader,
             cache: std::collections::HashMap::new(),
         }
     }
@@ -564,45 +568,88 @@ impl<'a> QueryCompiler<'a> {
     pub fn get_language_info(
         &mut self,
         language_name: LanguageName,
-        language: &tree_sitter::Language,
     ) -> Result<std::rc::Rc<LanguageInfo>, QueryCompilerError> {
-        let entry = self.cache.entry(language_name);
-        let entry = match entry {
-            std::collections::hash_map::Entry::Occupied(e) => {
-                return e
+        use std::str::FromStr;
+        let parent_language = match self.cache.entry(language_name) {
+            std::collections::hash_map::Entry::Occupied(entry) => {
+                return entry
                     .get()
                     .clone()
                     .ok_or(QueryCompilerError::HasFailedBefore(language_name))
             }
-            std::collections::hash_map::Entry::Vacant(e) => e,
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                match get_language_info_uncached(
+                    language_name,
+                    &self.config,
+                    &mut self.language_loader,
+                ) {
+                    Ok(x) => {
+                        let result = std::rc::Rc::new(x);
+                        entry.insert(Some(result.clone()));
+                        return Ok(result);
+                    }
+                    Err(e) => {
+                        let parent = hyperpolyglot::Language::try_from(language_name.as_ref())
+                            .ok()
+                            .and_then(|lang_hy| lang_hy.group)
+                            .and_then(|group| LanguageName::from_str(group).ok());
+                        let Some(parent) = parent else {
+                            entry.insert(None);
+                            return Err(QueryCompilerError::GetLanguageInfoError(language_name, e));
+                        };
+                        log::warn!(
+                            "failed to load {language_name} so falling back to {parent}: {e}"
+                        );
+                        parent
+                    }
+                }
+            }
         };
-        let mut language_config = LanguageConfigV3 {
-            extends: Some(language_name.to_string()),
-            ..Default::default()
-        };
-        while let Some(extends) = language_config.extends.as_ref() {
-            use std::str::FromStr;
-            let base_language = LanguageName::from_str(extends).map_err(|_| {
-                QueryCompilerError::ExtendsUnknownLanguage(language_name, extends.to_owned())
-            })?;
-            let base_config = self
-                .config
-                .languages
-                .get(&base_language)
-                .ok_or(QueryCompilerError::LanguageIsNotInConfig(base_language))?;
-            language_config.rebase(base_config);
-        }
-        match LanguageInfo::new(language, &language_config) {
-            Ok(x) => Ok(entry.insert(Some(std::rc::Rc::new(x))).clone().unwrap()),
+        match self.get_language_info(parent_language) {
+            Ok(result) => {
+                self.cache.insert(language_name, Some(result.clone()));
+                Ok(result)
+            }
             Err(e) => {
-                entry.insert(None);
-                Err(QueryCompilerError::GetLanguageInfoError(language_name, e))
+                self.cache.insert(language_name, None);
+                Err(e)
             }
         }
     }
 }
 
+fn get_language_info_uncached(
+    language_name: LanguageName,
+    config: &Config,
+    language_loader: &mut loader::Loader,
+) -> Result<LanguageInfo, GetLanguageInfoError> {
+    let mut language_config = LanguageConfigV3 {
+        extends: Some(language_name.to_string()),
+        ..Default::default()
+    };
+    while let Some(extends) = language_config.extends.as_ref() {
+        use std::str::FromStr;
+        let base_language = LanguageName::from_str(extends).map_err(|_| {
+            GetLanguageInfoError::ExtendsUnknownLanguage(language_name, extends.to_owned())
+        })?;
+        let base_config = config
+            .languages
+            .get(&base_language)
+            .ok_or(GetLanguageInfoError::LanguageIsNotInConfig(base_language))?;
+        language_config.rebase(base_config);
+    }
+    let parser_source = language_config
+        .parser
+        .as_ref()
+        .ok_or(GetLanguageInfoError::ParserNotConfigured)?;
+    let language = language_loader
+        .get_language(parser_source)
+        .map_err(GetLanguageInfoError::LoaderError)?;
+    LanguageInfo::new(language, &language_config)
+}
+
 pub struct LanguageInfo {
+    pub language: tree_sitter::Language,
     pub definition_query: DefinitionQuery,
     pub sibling_node_types: std::vec::Vec<std::num::NonZero<u16>>,
     pub parent_query: Option<ParentQuery>,
@@ -648,7 +695,7 @@ pub enum InjectionLanguageHint {
 
 impl LanguageInfo {
     pub fn new(
-        language: &tree_sitter::Language,
+        language: tree_sitter::Language,
         config: &LanguageConfigV3,
     ) -> Result<Self, GetLanguageInfoError> {
         fn compile_query(
@@ -695,7 +742,7 @@ impl LanguageInfo {
         let definition_query = match &config.definition_query {
             None => Err(GetLanguageInfoError::DefinitionQueryMissing)?,
             Some(query_source) => {
-                let query = compile_query(language, query_source.as_ref())?;
+                let query = compile_query(&language, query_source.as_ref())?;
                 DefinitionQuery {
                     index_name: get_capture_index(
                         &query,
@@ -716,7 +763,7 @@ impl LanguageInfo {
         let parent_query = match &config.parent_query {
             None => None,
             Some(query_source) => {
-                let query = compile_query(language, query_source.as_ref())?;
+                let query = compile_query(&language, query_source.as_ref())?;
                 Some(ParentQuery {
                     index_exclude: query.capture_index_for_name("exclude"),
                     query,
@@ -726,7 +773,7 @@ impl LanguageInfo {
         let recurse_query = match &config.recurse_query {
             None => None,
             Some(query_source) => {
-                let query = compile_query(language, query_source.as_ref())?;
+                let query = compile_query(&language, query_source.as_ref())?;
                 Some(RecurseQuery {
                     index_name: get_capture_index(
                         &query,
@@ -741,7 +788,7 @@ impl LanguageInfo {
         let import_query = match &config.import_query {
             None => None,
             Some(query_source) => {
-                let query = compile_query(language, query_source.as_ref())?;
+                let query = compile_query(&language, query_source.as_ref())?;
                 Some(ImportQuery {
                     index_name: get_capture_index(
                         &query,
@@ -762,7 +809,7 @@ impl LanguageInfo {
         let injection_query = match &config.injection_query {
             None => None,
             Some(query_source) => {
-                let query = compile_query(language, query_source.as_ref())?;
+                let query = compile_query(&language, query_source.as_ref())?;
                 let mut language_hints_by_pattern_index: Vec<InjectionLanguageHint> =
                     vec![InjectionLanguageHint::Absent; query.pattern_count()];
                 for (pattern_index, language_hint) in language_hints_by_pattern_index
@@ -797,12 +844,13 @@ impl LanguageInfo {
             definition_query,
             sibling_node_types: match &config.sibling_node_types {
                 None => vec![],
-                Some(v) => resolve_node_types(language, v)?,
+                Some(v) => resolve_node_types(&language, v)?,
             },
             parent_query,
             recurse_query,
             import_query,
             injection_query,
+            language,
         })
     }
 }

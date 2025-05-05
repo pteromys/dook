@@ -10,34 +10,17 @@ use dook::{Config, LanguageName, QueryCompiler};
 type TestCase<'a> = (&'a str, Vec<std::ops::Range<usize>>, Vec<&'a str>);
 
 fn verify_examples(language_name: LanguageName, source: &[u8], cases: &[TestCase]) {
-    let config = Config::load_default();
     let target_dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
-    let downloads_policy = get_downloads_policy();
-    let mut language_loader = loader::Loader::new(
+    let language_loader = loader::Loader::new(
         target_dir.clone(),
         Some(target_dir.clone()),
-        downloads_policy,
+        get_downloads_policy(),
     )
     .expect("should have called tree_sitter_loader::Loader::with_parser_lib_path(), not new()");
-
-    let parser_source = config.get_parser_source(language_name).unwrap();
-    let language = language_loader
-        .get_language(parser_source)
-        .unwrap()
-        .unwrap();
-    let mut query_compiler = QueryCompiler::new(&config);
-    let language_info = query_compiler
-        .get_language_info(language_name, &language)
-        .unwrap();
+    let mut query_compiler = QueryCompiler::new(Config::load_default(), language_loader);
+    let language_info = query_compiler.get_language_info(language_name).unwrap();
     let mut parser = tree_sitter::Parser::new();
-    parser
-        .set_language(
-            &language_loader
-                .get_language(config.get_parser_source(language_name).unwrap())
-                .unwrap()
-                .unwrap(),
-        )
-        .unwrap();
+    parser.set_language(&language_info.language).unwrap();
     let tree = parser.parse(source, None).unwrap();
     for (query, expect_ranges, expect_recurses) in cases {
         let pattern_str = String::from("^") + query + "$";
@@ -69,16 +52,14 @@ fn verify_multipass_examples(
     source: &[u8],
     cases: &[MultiPassTestCase],
 ) {
-    let config = Config::load_default();
     let target_dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
-    let downloads_policy = get_downloads_policy();
-    let mut language_loader = loader::Loader::new(
+    let language_loader = loader::Loader::new(
         target_dir.clone(),
         Some(target_dir.clone()),
-        downloads_policy,
+        get_downloads_policy(),
     )
     .expect("should have called tree_sitter_loader::Loader::with_parser_lib_path(), not new()");
-    let mut query_compiler = QueryCompiler::new(&config);
+    let mut query_compiler = QueryCompiler::new(Config::load_default(), language_loader);
     let input = inputs::LoadedFile {
         bytes: source.into(),
         language_name,
@@ -88,7 +69,6 @@ fn verify_multipass_examples(
         let local_pattern_str = String::from("^") + query + "$";
         let local_pattern = regex::Regex::new(&local_pattern_str).unwrap();
         let search_params = main_search::SearchParams {
-            config: &config,
             local_pattern: &local_pattern,
             current_pattern: &current_pattern,
             only_names: false,
@@ -97,7 +77,6 @@ fn verify_multipass_examples(
         let result = main_search::search_one_file(
             &search_params,
             inputs::SearchInput::Loaded(&input),
-            &mut language_loader,
             &mut query_compiler,
         )
         .unwrap();
