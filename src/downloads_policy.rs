@@ -19,10 +19,14 @@ impl std::fmt::Display for DownloadsPolicy {
 
 /// Get saved downloads policy setting from downloads_policy.txt.
 pub fn get_downloads_policy() -> DownloadsPolicy {
-    let Some(path) = settings_path() else {
+    get_downloads_policy_from_path(settings_path().as_ref())
+}
+
+pub fn get_downloads_policy_from_path(path: Option<&std::path::PathBuf>) -> DownloadsPolicy {
+    let Some(path) = path else {
         return DownloadsPolicy::Ask;
     };
-    let Ok(bytes) = std::fs::read(&path) else {
+    let Ok(bytes) = std::fs::read(path) else {
         return DownloadsPolicy::Ask;
     };
     let Ok(setting) = std::str::from_utf8(bytes.as_ref()) else {
@@ -41,14 +45,7 @@ pub fn get_downloads_policy() -> DownloadsPolicy {
 
 pub fn settings_path() -> Option<std::path::PathBuf> {
     use etcetera::AppStrategy;
-    if cfg!(test) {
-        option_env!("CARGO_TARGET_TMPDIR")
-            .map(|d| std::path::PathBuf::from(d).join("downloads_policy.txt"))
-    } else {
-        config::dirs()
-            .ok()
-            .map(|d| d.config_dir().join("downloads_policy.txt"))
-    }
+    config::dirs().ok().map(|d| d.config_dir().join("downloads_policy.txt"))
 }
 
 pub fn can_download(url: &str, policy: DownloadsPolicy) -> bool {
