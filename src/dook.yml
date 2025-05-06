@@ -97,6 +97,60 @@ CSS:
     (id_selector (id_name) @name) @def
   parent_query: |
     (rule_set)
+Cython:
+  parser:
+    git:
+      clone: https://github.com/b0o/tree-sitter-cython
+      commit: 62f44f5e7e41dde03c5f0a05f035e293bcf2bcf8
+      subdirectory: src
+  extends: Python
+  definition_query: |
+    [
+      (class_definition name: (_) @name)
+      (function_definition name: (_) @name)
+      (decorated_definition
+        [ (class_definition name: (_) @name)
+          (function_definition name: (_) @name) ])
+      (assignment left:
+        [ (_) @name
+          (attribute attribute: (_) @name)
+          (subscript subscript: (string (string_content) @name))
+          (pattern_list (identifier) @name) ])
+      (global_statement (identifier) @name)
+      (nonlocal_statement (identifier) @name)
+      (aliased_import alias: (identifier) @name)
+      (as_pattern_target (identifier) @name)
+    ] @def
+    (dictionary (pair key: (string (string_content) @name)) @def)
+    (parameters (identifier) @name @def)
+    (lambda_parameters (identifier) @name @def)
+    (typed_parameter . (identifier) @name) @def
+    (default_parameter name: (_) @name) @def
+    (typed_default_parameter name: (_) @name) @def
+    (for_from_loop left: (_) @name) @def
+    (for_in_loop left: [
+      (_) @name
+      (pattern_list (identifier) @name)]) @def
+    (for_in_clause left: [
+      (_) @name
+      (pattern_list (identifier) @name)]) @def
+    (call function: (identifier) @f (#eq? @f "setattr") arguments: (argument_list ("(" (_) "," (string (string_content) @name)))) @def
+    (call function: (attribute attribute: (identifier) @f (#any-of? @f "__setattr__" "__setitem__")) arguments: (argument_list ((string (string_content) @name) "," (_) ")"))) @def
+    (DEF_statement name: (_) @name) @def
+    (cvar_def (maybe_typed_name name: (_) @name)) @def
+    (c_parameters (maybe_typed_name name: (_) @name)) @def
+    (cvar_decl (identifier) @name) @def
+    (cppclass (identifier) @name) @def
+    (enum (identifier) @name) @def
+    (fused (identifier) @name) @def
+    (struct (identifier) @name) @def
+    (property_definition (identifier) @name) @def
+  parent_query: |
+    ...
+    (cppclass (_) @exclude)
+    (enum (block) @exclude)
+    (struct (struct_suite) @exclude)
+    (property_definition body: (_) @exclude)
 GLSL:
   parser:
     tarball:
@@ -268,15 +322,19 @@ Python:
     [
       (class_definition name: (_) @name)
       (function_definition name: (_) @name)
-      (decorated_definition [
-        (class_definition name: (_) @name)
-        (function_definition name: (_) @name)])
-      (assignment left: [
-        (_) @name
-        (attribute attribute: (_) @name)
-        (subscript subscript: (string (string_content) @name))
-        (pattern_list (identifier) @name)
-      ])
+      (decorated_definition
+        [ (class_definition name: (_) @name)
+          (function_definition name: (_) @name) ])
+      (assignment left:
+        [ (_) @name
+          (attribute attribute: (_) @name)
+          (subscript subscript: (string (string_content) @name))
+          (pattern_list (identifier) @name) ])
+      (global_statement (identifier) @name)
+      (nonlocal_statement (identifier) @name)
+      (type_alias_statement left: (_) @name)
+      (aliased_import alias: (identifier) @name)
+      (as_pattern_target (identifier) @name)
     ] @def
     (dictionary (pair key: (string (string_content) @name)) @def)
     (parameters (identifier) @name @def)
@@ -284,17 +342,18 @@ Python:
     (typed_parameter . (identifier) @name) @def
     (default_parameter name: (_) @name) @def
     (typed_default_parameter name: (_) @name) @def
+    (for_statement left:
+      [ (_) @name
+        (pattern_list (identifier) @name)
+      ] @def)
+    (for_statement left:
+      [ (_) @name
+        (pattern_list (identifier) @name)
+      ] right: (_) @def)
+    (for_in_clause left:
+      [ (_) @name
+        (pattern_list (identifier) @name) ]) @def
     (call function: (identifier) @f (#eq? @f "setattr") arguments: (argument_list ("(" (_) "," (string (string_content) @name)))) @def
-    (aliased_import alias: (identifier) @name) @def
-    (as_pattern_target (identifier) @name) @def
-    (for_statement left: [
-      (_) @name
-      (pattern_list (identifier) @name)
-    ] @def)
-    (for_statement left: [
-      (_) @name
-      (pattern_list (identifier) @name)
-    ] right: (_) @def)
     (call function: (attribute attribute: (identifier) @f (#any-of? @f "__setattr__" "__setitem__")) arguments: (argument_list ((string (string_content) @name) "," (_) ")"))) @def
   sibling_node_types:
   - decorator
@@ -447,6 +506,8 @@ TSX:
       url: https://github.com/tree-sitter/tree-sitter-typescript/releases/download/v0.23.2/tree-sitter-typescript.tar.xz
   extends: TypeScript
   definition_query: |
+    ...
     (jsx_attribute (property_identifier) @name) @def
   parent_query: |
+    ...
     (jsx_opening_element attribute: (_) @exclude)

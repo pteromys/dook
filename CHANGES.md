@@ -22,6 +22,7 @@ changelog 🧚
   - glsl
   - bash
   - lua
+  - cython (.pyx)
 - Config file format version 3 (never released v2):
   - Add integer "_version" field.
   - Switch to yaml since we use a lot of multi-line strings.
@@ -52,6 +53,7 @@ changelog 🧚
   - parent object names in js/ts/tsx
   - struct/enum members and parent structs/enums/traits in rust
   - impls for generic types in rust
+  - type aliases and global/nonlocal declarations in python
 - Cache tree-sitter query compilation for 4x speedup.
 - Add bash and zsh completions.
 - Order search by likely imports to try to get results sooner (python).

@@ -1,19 +1,17 @@
-use crate::downloads_policy::DownloadsPolicy;
-use crate::language_name::LanguageName;
+use dook::config;
+use dook::downloads_policy;
+use dook::downloads_policy::{get_downloads_policy, DownloadsPolicy};
+use dook::inputs;
+use dook::main_search;
+use dook::searches;
+use dook::{
+    Config, ConfigParseError, LanguageName, Loader, LoaderError, QueryCompiler, QueryCompilerError,
+    RangeUnion,
+};
 use enum_derive_2018::EnumFromInner;
 use etcetera::AppStrategy;
 
-mod config;
-mod dep_resolution;
-mod downloads_policy;
 mod dumptree;
-mod inputs;
-mod language_aliases;
-mod language_name;
-mod loader;
-mod main_search;
-mod range_union;
-mod searches;
 mod uncase;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum)]
@@ -95,7 +93,8 @@ struct Cli {
         required = false,
         help = format!(
             "What to do if we need to download a parser (default: {} from {})",
-            downloads_policy::get_downloads_policy(), match downloads_policy::settings_path() {
+            get_downloads_policy(),
+            match downloads_policy::settings_path() {
                 None => "built-in".to_string(),
                 Some(path) => format!("{path:?}"),
             })
@@ -140,11 +139,11 @@ macro_attr_2018::macro_attr! {
     enum DookError {
         CliParse(&'static str),
         Regex(regex::Error),
-        ConfigParse(config::ConfigParseError),
+        ConfigParse(ConfigParseError),
         Input(inputs::Error),
         FileParse(searches::FileParseError),
-        LoaderError(loader::LoaderError),
-        QueryCompilerError(config::QueryCompilerError),
+        LoaderError(LoaderError),
+        QueryCompilerError(QueryCompilerError),
         HomeDirError(etcetera::HomeDirError),
         RipGrepError(RipGrepError),
         PagerWriteError(PagerWriteError),
@@ -207,9 +206,7 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
     // see how much approval we have to download parsers
     let downloads_policy = match cli.offline {
         true => DownloadsPolicy::No,
-        false => cli
-            .download
-            .unwrap_or_else(downloads_policy::get_downloads_policy),
+        false => cli.download.unwrap_or_else(get_downloads_policy),
     };
     let downloads_policy = if downloads_policy == DownloadsPolicy::Ask && !is_term {
         DownloadsPolicy::No
@@ -263,15 +260,15 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
     logger_builder.init();
 
     // load config
-    let custom_config = config::Config::load(&cli.config)?;
-    let default_config = config::Config::load_default();
+    let custom_config = Config::load(&cli.config)?;
+    let default_config = Config::load_default();
     let merged_config = match custom_config {
         None => default_config,
         Some(custom_config) => default_config.merge(custom_config),
     };
     let parser_src_path = config::dirs()?.cache_dir().join("sources");
-    let language_loader = loader::Loader::new(parser_src_path, None, downloads_policy)?;
-    let mut query_compiler = config::QueryCompiler::new(merged_config, language_loader);
+    let language_loader = Loader::new(parser_src_path, None, downloads_policy)?;
+    let mut query_compiler = QueryCompiler::new(merged_config, language_loader);
 
     // check for dump-parse mode
     if let Some(dump_target) = cli.dump {
@@ -428,9 +425,11 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
                         .make_contiguous()
                         .sort_by_cached_key(|path| match path {
                             None => 0,
-                            Some(path) => {
-                                dep_resolution::dissimilarity(language_name, &import_pattern, path)
-                            }
+                            Some(path) => dook::dep_resolution::dissimilarity(
+                                language_name,
+                                &import_pattern,
+                                path,
+                            ),
                         });
                 }
             }
@@ -502,7 +501,7 @@ pub fn is_broken_pipe<T>(result: &std::io::Result<T>) -> bool {
 
 fn write_ranges(
     input: inputs::SearchInput,
-    ranges: &range_union::RangeUnion,
+    ranges: &RangeUnion,
     cli: &Cli,
     use_color: EnablementLevel,
     bat_size: Option<(u16, u16)>,

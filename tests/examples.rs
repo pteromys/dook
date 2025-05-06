@@ -4,14 +4,14 @@
 )]
 
 use dook::downloads_policy::get_downloads_policy;
-use dook::{inputs, loader, main_search, searches};
-use dook::{Config, LanguageName, QueryCompiler};
+use dook::{inputs, main_search, searches};
+use dook::{Config, LanguageName, Loader, QueryCompiler};
 
 type TestCase<'a> = (&'a str, Vec<std::ops::Range<usize>>, Vec<&'a str>);
 
 fn verify_examples(language_name: LanguageName, source: &[u8], cases: &[TestCase]) {
     let target_dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
-    let language_loader = loader::Loader::new(
+    let language_loader = Loader::new(
         target_dir.clone(),
         Some(target_dir.clone()),
         get_downloads_policy(),
@@ -53,7 +53,7 @@ fn verify_multipass_examples(
     cases: &[MultiPassTestCase],
 ) {
     let target_dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
-    let language_loader = loader::Loader::new(
+    let language_loader = Loader::new(
         target_dir.clone(),
         Some(target_dir.clone()),
         get_downloads_policy(),
@@ -126,6 +126,26 @@ fn python() {
     verify_examples(
         LanguageName::PYTHON,
         include_bytes!("../test_cases/python.py"),
+        &cases,
+    );
+}
+
+#[test]
+fn cython() {
+    let cases = [
+        ("hello", vec![1..1]),
+        ("Color", vec![3..10]),
+        ("component", vec![3..4]),
+        ("public", vec![]),
+        ("double", vec![]),
+        ("i", vec![3..3, 6..7]),
+        ("gamma_encode", vec![12..13]),
+        ("x", vec![12..12]),
+        ("float64", vec![15..15]),
+    ];
+    verify_multipass_examples(
+        LanguageName::CYTHON,
+        include_bytes!("../test_cases/cython.pyx"),
         &cases,
     );
 }

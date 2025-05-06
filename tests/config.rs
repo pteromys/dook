@@ -1,12 +1,11 @@
 use dook::downloads_policy::get_downloads_policy;
-use dook::loader;
-use dook::{Config, QueryCompiler};
+use dook::{Config, Loader, QueryCompiler};
 
 #[test]
 fn default_patterns_are_loadable() {
     let target_dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
     eprintln!("CARGO_TARGET_TMPDIR is {:?}", target_dir);
-    let language_loader = loader::Loader::new(
+    let language_loader = Loader::new(
         target_dir.clone(),
         Some(target_dir.clone()),
         get_downloads_policy(),

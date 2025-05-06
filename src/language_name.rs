@@ -16,9 +16,8 @@ impl LanguageName {
     pub const CPLUSPLUS: Self = Self("C++");
     pub const GO: Self = Self("Go");
     pub const MARKDOWN: Self = Self("Markdown");
-
-    #[allow(unused)]
     pub const HTML: Self = Self("HTML");
+    pub const CYTHON: Self = Self("Cython");
 
     /// Convert language names from the strings we used in the v1 and v2 config format
     pub fn from_legacy(s: &str) -> Result<Self, UnknownLanguageError> {

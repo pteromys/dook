@@ -459,12 +459,23 @@ impl Config {
 
 impl LanguageConfigV3 {
     pub fn rebase(&mut self, base: &LanguageConfigV3) {
-        fn concat(left: Option<&String>, right: Option<String>) -> Option<String> {
-            match left {
-                None => right,
-                Some(left) => match right {
-                    None => Some(left.clone()),
-                    Some(right) => Some(left.clone() + &right),
+        fn combine_queries(base: Option<&String>, extension: Option<String>) -> Option<String> {
+            let (is_concat, extension) = match extension.as_ref() {
+                None => (true, None),
+                Some(extension) => {
+                    let extension = extension.trim_start();
+                    match extension.split_at_checked(3) {
+                        Some(("...", rest)) => (true, Some(rest)),
+                        _ => (false, Some(extension)),
+                    }
+                }
+            };
+            match base {
+                None => extension.map(|s| s.to_owned()),
+                Some(base) => match extension {
+                    None => Some(base.clone()),
+                    Some(extension) if !is_concat => Some(extension.to_owned()),
+                    Some(extension) => Some(base.clone() + extension),
                 },
             }
         }
@@ -472,19 +483,38 @@ impl LanguageConfigV3 {
             self.parser = base.parser.clone();
         }
         self.extends = base.extends.clone();
+
+        // combine queries
         self.definition_query =
-            concat(base.definition_query.as_ref(), self.definition_query.take());
+            combine_queries(base.definition_query.as_ref(), self.definition_query.take());
+
+        // combine sibling nodes
+        let is_concat = self
+            .sibling_node_types
+            .as_ref()
+            .and_then(|v| v.first())
+            .map(|s| s.as_str())
+            == Some("...");
+        if is_concat {
+            self.sibling_node_types.as_mut().map(|v| v.swap_remove(0));
+        }
         if let Some(base_sibs) = base.sibling_node_types.as_ref() {
-            if let Some(sibs) = self.sibling_node_types.as_mut() {
-                sibs.extend_from_slice(base_sibs);
-            } else {
-                self.sibling_node_types = Some(base_sibs.clone());
+            match self.sibling_node_types.as_mut() {
+                Some(sibs) if is_concat => {
+                    sibs.extend_from_slice(base_sibs);
+                }
+                None => {
+                    self.sibling_node_types = Some(base_sibs.clone());
+                }
+                _ => (),
             }
         }
-        self.parent_query = concat(base.parent_query.as_ref(), self.parent_query.take());
-        self.recurse_query = concat(base.recurse_query.as_ref(), self.recurse_query.take());
-        self.import_query = concat(base.import_query.as_ref(), self.import_query.take());
-        self.injection_query = concat(base.injection_query.as_ref(), self.injection_query.take());
+        self.parent_query = combine_queries(base.parent_query.as_ref(), self.parent_query.take());
+        self.recurse_query =
+            combine_queries(base.recurse_query.as_ref(), self.recurse_query.take());
+        self.import_query = combine_queries(base.import_query.as_ref(), self.import_query.take());
+        self.injection_query =
+            combine_queries(base.injection_query.as_ref(), self.injection_query.take());
     }
 }
 

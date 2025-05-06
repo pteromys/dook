@@ -48,7 +48,7 @@ Also attempts to find assignments, class definitions, etc—because why should y
 - HTML, CSS, Markdown
 - JavaScript, TypeScript, TSX
 - Lua
-- Python
+- Python, Cython
 - Rust
 - Shell (everything is just assumed to be bash)
 
