@@ -56,7 +56,7 @@ impl LoadedFile {
         let language_name = match std::io::stdin().read_to_end(&mut bytes) {
             Err(e) => Err(Error::UnreadableFile(e.to_string())),
             Ok(_) if bytes.is_empty() => Err(Error::EmptyStdin),
-            Ok(_) => detect_language_from_bytes(&bytes),
+            Ok(_) => detect_language_from_bytes(&bytes, None),
         }?;
         Ok(LoadedFile {
             bytes,
@@ -75,18 +75,61 @@ pub fn detect_language_from_path(path: &std::path::Path) -> Result<LanguageName,
         .map_err(|_| Error::UnsupportedLanguage(language_name_str.to_owned()))
 }
 
+#[cfg(not(feature = "stdin"))]
+pub fn detect_language_from_bytes(_: &[u8], _: Option<&str>) -> Result<LanguageName, Error> {
+    Err(Error::UnknownLanguage)
+}
+
 #[cfg(feature = "stdin")]
-pub fn detect_language_from_bytes(bytes: &[u8]) -> Result<LanguageName, Error> {
+pub fn detect_language_from_bytes(bytes: &[u8], hint: Option<&str>) -> Result<LanguageName, Error> {
     use std::str::FromStr;
-    let language_name_str = hyperpolyglot::detectors::classify(
-        std::str::from_utf8(bytes).map_err(|e| Error::UnreadableFile(e.to_string()))?,
-        &[],
-    );
+    let language_name_str = detect_language_str_from_bytes(bytes, hint)?;
     LanguageName::from_str(language_name_str)
         .map_err(|_| Error::UnsupportedLanguage(language_name_str.to_owned()))
 }
 
-#[cfg(not(feature = "stdin"))]
-pub fn detect_language_from_bytes(_: &[u8]) -> Result<LanguageName, Error> {
-    Err(Error::UnknownLanguage)
+/// This is basically hyperpolyglot::detect but without the part using the file path
+#[cfg(feature = "stdin")]
+fn detect_language_str_from_bytes(bytes: &[u8], hint: Option<&str>) -> Result<&'static str, Error> {
+    let extension = hint.map(|hint| ".".to_string() + hint);
+    let extension_candidates = extension.as_ref().map(|e| hyperpolyglot::detectors::get_languages_from_extension(e)).unwrap_or_default();
+    if extension_candidates.len() == 1 {
+        return Ok(extension_candidates[0]);
+    }
+
+    let shebang_reader = std::io::Cursor::new(bytes);
+    let shebang_candidates = hyperpolyglot::detectors::get_languages_from_shebang(shebang_reader).unwrap_or_default();
+    let candidates = filter_candidates(extension_candidates, shebang_candidates);
+    if candidates.len() == 1 {
+        return Ok(candidates[0]);
+    }
+
+    let head = &bytes[..51200]; // hyperpolyglot::MAX_CONTENT_SIZE_BYTES
+    let head_end = head.iter().rposition(|b| b & 128 == 0).ok_or(Error::UnknownLanguage)?;
+    let head_str = std::str::from_utf8(&head[..head_end])
+        .map_err(|e| Error::UnreadableFile(e.to_string()))?;
+    let candidates = match extension {
+        None => candidates,
+        Some(_) if candidates.is_empty() => candidates,
+        Some(extension) => {
+            let heuristic_candidates = hyperpolyglot::detectors::get_languages_from_heuristics(&extension, &candidates, head_str);
+            filter_candidates(candidates, heuristic_candidates)
+        }
+    };
+    if candidates.len() == 1 {
+        return Ok(candidates[0]);
+    }
+
+    Ok(hyperpolyglot::detectors::classify(head_str, &candidates))
+}
+
+// cribbed from hyperpolyglot lib.rs
+#[cfg(feature = "stdin")]
+fn filter_candidates(old: Vec<&'static str>, new: Vec<&'static str>) -> Vec<&'static str> {
+    if old.is_empty() { return new; }
+    let intersection: Vec<_> = new.into_iter().filter(|s| old.contains(s)).collect();
+    match intersection.len() {
+        0 => old,
+        _ => intersection,
+    }
 }

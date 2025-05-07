@@ -140,6 +140,7 @@ pub fn search_one_file_with_one_injection(
                 Some(hinted) => hinted,
                 None => inputs::detect_language_from_bytes(
                     &file_bytes[injection.range.start_byte..injection.range.end_byte],
+                    injection.language_hint.as_ref().map(AsRef::as_ref),
                 )?,
             }
         }

@@ -233,10 +233,13 @@ fn rust() {
 
 #[test]
 fn markdown_injections() {
-    let cases = [
+    let mut cases = [
         ("Nordstrom", vec![4..4, 8..8, 11..11, 13..13, 15..15]),
-        ("spartacus", vec![20..20, 24..25, 28..29, 32..33]),
+        ("spartacus", vec![20..20, 24..25, 28..29]),
     ];
+    if cfg!(feature = "stdin") {
+        cases[1].1.extend_from_slice(&[32..32, 34..34]);
+    }
     verify_multipass_examples(
         LanguageName::MARKDOWN,
         include_bytes!("../test_cases/injection.md"),

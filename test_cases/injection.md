@@ -29,7 +29,8 @@ static const int spartacus;
 spartacus: int
 ```
 
-```sh
+```
+#!/bin/sh
 spartacus=5
 ```
 

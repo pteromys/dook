@@ -311,6 +311,9 @@ Markdown:
       (info_string (language) @lang)
       (code_fence_content) @injection.content
       (#set! injection.language @lang))
+    (fenced_code_block
+      (fenced_code_block_delimiter) . (block_continuation)
+      (code_fence_content) @injection.content)
 Python:
   parser:
     tarball:
