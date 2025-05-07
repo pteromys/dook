@@ -109,7 +109,7 @@ pub fn search_one_file(
                 continue;
             }
         };
-        log::debug!("results = {:?}", &pass_results);
+        log::debug!("results = {:#?}", &pass_results);
         match pass_results.search_result {
             SearchResult::Names(matched_names) => {
                 results.matched_names.extend_from_slice(&matched_names);
@@ -173,8 +173,11 @@ pub fn search_one_file_with_one_injection(
         }
     };
     log::debug!(
-        "detected {:?} as {:?} in {:?}",
-        injection.map(|i| i.range),
+        "detected {} as {:?} in {:?}",
+        match injection {
+            None => "file".to_string(),
+            Some(i) => format!("{}-{}", i.range.start_point.row, i.range.end_point.row),
+        },
         language_name,
         detect_start.elapsed()
     );
