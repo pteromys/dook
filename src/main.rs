@@ -12,6 +12,7 @@ use enum_derive_2018::EnumFromInner;
 use etcetera::AppStrategy;
 
 mod dumptree;
+mod run_grep;
 mod uncase;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum)]
@@ -145,7 +146,7 @@ macro_attr_2018::macro_attr! {
         LoaderError(LoaderError),
         QueryCompilerError(QueryCompilerError),
         HomeDirError(etcetera::HomeDirError),
-        RipGrepError(RipGrepError),
+        RipGrepError(run_grep::RipGrepError),
         PagerWriteError(PagerWriteError),
         NotRecaseable(uncase::NotRecaseable),
     }
@@ -338,24 +339,24 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
         };
         // pass 0: find candidate files with ripgrep
         log::debug!("invoking ripgrep with {:?}", current_pattern);
-        let mut filenames: std::collections::VecDeque<Option<std::path::PathBuf>> = if use_stdin
-            && is_first_loop
-        {
-            std::collections::VecDeque::from([None])
-        } else {
-            let ripgrep_results = ripgrep(&current_pattern, ignore_case).filter_map(|f| match f {
-                Ok(p) => Some(Some(p)),
-                Err(e) => {
-                    log::error!("{e}");
-                    None
-                }
-            });
-            if use_stdin {
-                std::iter::once(None).chain(ripgrep_results).collect()
+        let mut filenames: std::collections::VecDeque<Option<std::path::PathBuf>> =
+            if use_stdin && is_first_loop {
+                std::collections::VecDeque::from([None])
             } else {
-                ripgrep_results.collect()
-            }
-        };
+                let ripgrep_results =
+                    run_grep::ripgrep(&current_pattern, ignore_case).filter_map(|f| match f {
+                        Ok(p) => Some(Some(p)),
+                        Err(e) => {
+                            log::error!("{e}");
+                            None
+                        }
+                    });
+                if use_stdin {
+                    std::iter::once(None).chain(ripgrep_results).collect()
+                } else {
+                    ripgrep_results.collect()
+                }
+            };
         log::debug!(
             "ripgrep found {} files",
             if use_stdin {
@@ -584,65 +585,4 @@ fn load_stdin(cli: &Cli) -> Result<Option<inputs::LoadedFile>, inputs::Error> {
     } else {
         inputs::LoadedFile::load_stdin().map(Some)
     }
-}
-
-#[derive(Debug)]
-enum RipGrepError {
-    NotLaunched(std::io::Error),
-    ReadFailed(std::io::Error),
-    FileNameUnparseable(Vec<u8>),
-}
-
-#[rustfmt::skip] // keep compact
-impl std::fmt::Display for RipGrepError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RipGrepError::NotLaunched(e)
-                => write!(f, "failed to run ripgrep: {}", e),
-            RipGrepError::ReadFailed(e)
-                => write!(f, "failed to read ripgrep output: {}", e),
-            RipGrepError::FileNameUnparseable(filename)
-                => write!(f, "ripgrep returned unreadable filename: {:?}", filename),
-        }
-    }
-}
-
-fn ripgrep(
-    pattern: &regex::Regex,
-    ignore_case: bool,
-) -> Box<dyn Iterator<Item = Result<std::path::PathBuf, RipGrepError>>> {
-    use os_str_bytes::OsStrBytes;
-    use std::io::BufRead;
-
-    // first-pass search with ripgrep
-    let mut rg = std::process::Command::new("rg");
-    if ignore_case {
-        rg.arg("-i");
-    }
-    let mut child = match rg
-        .args(["-l", "--sort=path", "-0"])
-        .arg(pattern.as_str())
-        .arg("./")
-        .stderr(std::process::Stdio::inherit())
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-    {
-        Ok(c) => c,
-        Err(e) => return Box::new(std::iter::once(Err(RipGrepError::NotLaunched(e)))),
-    };
-    let child_stdout = child.stdout.take().unwrap();
-    let rg_lines = std::io::BufReader::new(child_stdout).split(0);
-    Box::new(rg_lines.filter_map(|x| match x {
-        Err(e) => Some(Err(RipGrepError::ReadFailed(e))),
-        Ok(x) => match std::ffi::OsStr::from_io_bytes(&x) {
-            None => Some(Err(RipGrepError::FileNameUnparseable(x))),
-            Some(y) => {
-                if y.is_empty() {
-                    None
-                } else {
-                    Some(Ok(std::path::PathBuf::from(y)))
-                }
-            }
-        },
-    }))
 }
