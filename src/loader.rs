@@ -58,10 +58,10 @@ pub enum LoaderError {
         verb: String,
         source: CalledProcessError,
     },
-    CannotMakeDirectoryForGit {
+    CannotMakeDirectoryForDownload {
         source: std::io::Error,
-        repo_url: String,
-        repo_path: std::path::PathBuf,
+        url: String,
+        dest_path: std::path::PathBuf,
     },
     GitHasWrongRemote {
         repo_path: std::path::PathBuf,
@@ -122,9 +122,9 @@ impl std::fmt::Display for LoaderError {
             Self::ChildProcessFailed { verb, source }
                 => write!(f, "Attempt to {} {} ({:?})",
                           verb, source.source, source.command),
-            Self::CannotMakeDirectoryForGit { repo_url, repo_path, source }
-                => write!(f, "Could not make directory at {:?} to checkout {:?}: {}",
-                          repo_url, repo_path, source),
+            Self::CannotMakeDirectoryForDownload { url, dest_path, source }
+                => write!(f, "Could not make directory at {:?} to download {:?}: {}",
+                          url, dest_path, source),
             Self::GitHasWrongRemote { repo_path, desired_repo_url, existing_repo_url }
                 => write!(f, "Repository at {:?} points at {:?} instead of {:?}",
                           repo_path, existing_repo_url, desired_repo_url),
@@ -263,13 +263,6 @@ fn get_language(
                 },
             };
             let local_repo = sources_dir.join(repo_name);
-            std::fs::create_dir_all(&local_repo).map_err(|e| {
-                LoaderError::CannotMakeDirectoryForGit {
-                    repo_url: git.clone.to_owned(),
-                    repo_path: local_repo.to_owned(),
-                    source: e,
-                }
-            })?;
             git_clone(&git.clone, &git.commit, &local_repo, downloads_policy)?;
             let src_path = match &git.subdirectory {
                 None => local_repo,
@@ -408,10 +401,12 @@ fn git_clone(
         if !can_download(repo_url, downloads_policy) {
             return Err(LoaderError::NotAllowedToDownload(repo_url.to_owned()));
         }
+        ensure_parent_cache_dir(dest_path, repo_url)?;
         let mut command = std::process::Command::new("git");
         command
+            // blob:none if likely to reuse, tree:0 if disposable
             .args(["clone", "--filter=blob:none", repo_url])
-            .arg(dest_path) // blob:none if likely to reuse, tree:0 if disposable
+            .arg(dest_path)
             .stderr(std::process::Stdio::inherit());
         stdout_if_success(command).map_err(|e| LoaderError::ChildProcessFailed {
             verb: format!("clone {:?} to {:?}", repo_url, dest_path),
@@ -507,6 +502,7 @@ fn download_tarball(
         if !can_download(tarball_url, downloads_policy) {
             return Err(LoaderError::NotAllowedToDownload(tarball_url.to_owned()));
         }
+        ensure_parent_cache_dir(tarball_path, tarball_url)?;
         let mut command = std::process::Command::new("curl");
         command
             .args(["--output"])
@@ -572,6 +568,29 @@ fn hash_file_at_path(path: &std::path::Path) -> std::io::Result<digest::Output<s
     std::io::copy(&mut std::fs::File::open(path)?, &mut hasher)?;
     Ok(hasher.finalize())
 }
+
+fn ensure_parent_cache_dir(path: &std::path::Path, for_url: &str) -> Result<(), LoaderError> {
+    let error_context = |e: std::io::Error| -> LoaderError {
+        LoaderError::CannotMakeDirectoryForDownload {
+            url: for_url.to_owned(),
+            dest_path: path.to_owned(),
+            source: e,
+        }
+    };
+    let Some(dirname) = path.parent() else { return Ok(()) };
+    if std::fs::exists(dirname).map_err(error_context)? { return Ok(()) }
+    std::fs::create_dir_all(dirname).map_err(error_context)?;
+    let cachedir_tag_path = dirname.join("CACHEDIR.TAG");
+    if let Ok(true) = std::fs::exists(&cachedir_tag_path) { return Ok(()) }
+    std::fs::write(&cachedir_tag_path, CACHEDIR_DOT_TAG).map_err(error_context)
+}
+
+const CACHEDIR_DOT_TAG: &str =
+"Signature: 8a477f597d28d172789f06886806bc55
+# This file is a cache directory tag created by dook.
+# For information about cache directory tags, see:
+#       http://www.brynosaurus.com/cachedir/
+";
 
 /// Load a Language from a shared library. Pasted from tree-sitter-loader 0.25.2,
 /// from the end of tree_sitter_loader::Loader::load_language_at_path_with_name.
