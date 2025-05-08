@@ -35,6 +35,10 @@ impl RangeUnion {
     pub fn is_empty(&self) -> bool {
         self.ends_by_start.is_empty()
     }
+
+    pub fn end(&self) -> Option<usize> {
+        self.ends_by_start.values().next_back().copied()
+    }
 }
 
 impl<I> From<I> for RangeUnion

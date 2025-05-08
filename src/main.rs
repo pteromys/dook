@@ -500,7 +500,38 @@ pub fn is_broken_pipe<T>(result: &std::io::Result<T>) -> bool {
     }
 }
 
+thread_local! {
+    static HAS_BAT: std::cell::Cell<bool> = std::cell::Cell::new(
+        if std::process::Command::new("bat")
+            .arg("-V")
+            .stderr(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .output()
+            .is_ok()
+        {
+            true
+        } else {
+            log::warn!("bat not found on PATH; color and wrapping will be disabled");
+            false
+        }
+    );
+}
+
 fn write_ranges(
+    input: inputs::SearchInput,
+    ranges: &RangeUnion,
+    cli: &Cli,
+    use_color: EnablementLevel,
+    bat_size: Option<(u16, u16)>,
+) -> Result<(), PagerWriteError> {
+    if HAS_BAT.get() {
+        write_ranges_with_bat(input, ranges, cli, use_color, bat_size)
+    } else {
+        write_ranges_with_std_io(input, ranges, cli.plain == 0, bat_size)
+    }
+}
+
+fn write_ranges_with_bat(
     input: inputs::SearchInput,
     ranges: &RangeUnion,
     cli: &Cli,
@@ -510,26 +541,22 @@ fn write_ranges(
     use std::io::Write;
 
     let mut cmd = std::process::Command::new("bat");
-    let cmd = cmd
-        .arg("--paging=never")
+    cmd.arg("--paging=never")
         .arg(format!("--wrap={:?}", cli.wrap).to_lowercase())
         .arg(format!("--color={:?}", use_color).to_lowercase());
-    let cmd = match bat_size {
-        Some((_rows, cols)) => cmd.arg(format!("--terminal-width={}", cols)),
-        None => cmd,
-    };
-    let cmd = match cli.plain {
-        0 => cmd,
-        _ => cmd.arg("--plain"),
-    };
-    let cmd = cmd
-        .args(
-            ranges
-                .iter_filling_gaps(1) // snip indicator - 8< - takes 1 line anyway
-                .map(|x| format!("--line-range={}:{}", x.start + 1, x.end)), // bat end is inclusive
-        )
-        .stderr(std::process::Stdio::inherit())
-        .stdout(std::process::Stdio::piped());
+    if let Some((_rows, cols)) = bat_size {
+        cmd.arg(format!("--terminal-width={}", cols));
+    }
+    if cli.plain > 0 {
+        cmd.arg("--plain");
+    }
+    cmd.args(
+        ranges
+            .iter_filling_gaps(1) // snip indicator - 8< - takes 1 line anyway
+            .map(|x| format!("--line-range={}:{}", x.start + 1, x.end)), // bat end is inclusive
+    )
+    .stderr(std::process::Stdio::inherit())
+    .stdout(std::process::Stdio::piped());
     let mut child = match input {
         inputs::SearchInput::Path(path) => cmd.arg(path).spawn(),
         inputs::SearchInput::Loaded(stdin) => {
@@ -571,6 +598,67 @@ fn write_ranges(
     } else {
         Err(PagerWriteError::ReaderDied(exit_status))
     }
+}
+
+fn write_ranges_with_std_io(
+    input: inputs::SearchInput,
+    ranges: &RangeUnion,
+    number_lines: bool,
+    bat_size: Option<(u16, u16)>,
+) -> Result<(), PagerWriteError> {
+    use std::io::BufRead;
+    use std::io::Write;
+
+    let mut stdout = std::io::stdout();
+    let cols: usize = bat_size
+        .map(|(_rows, cols)| cols)
+        .unwrap_or(40)
+        .saturating_sub(1)
+        .into();
+    let sep1 = "-".repeat(cols);
+    let sep2 = "=".repeat(cols);
+    let Some(max_line_number) = ranges.end() else {
+        return Ok(());
+    };
+    let line_number_width = format!("{}", max_line_number).len();
+    let reader: Box<dyn BufRead> = match input {
+        inputs::SearchInput::Loaded(stdin) => {
+            writeln!(stdout, "{sep2}\nstdin\n{sep2}")?;
+            Box::new(std::io::Cursor::new(&stdin.bytes))
+        }
+        inputs::SearchInput::Path(path) => {
+            let reader = std::io::BufReader::new(std::fs::File::open(path)?);
+            writeln!(stdout, "{sep2}\n{}\n{sep2}", path.display())?;
+            Box::new(reader)
+        }
+    };
+    let mut ranges = ranges.iter_filling_gaps(1);
+    let Some(mut current_range) = ranges.next() else {
+        return Ok(());
+    };
+    for (i, line) in reader.lines().enumerate() {
+        if i < current_range.start {
+            continue;
+        }
+        if i >= current_range.end {
+            current_range = match ranges.next() {
+                None => return Ok(()),
+                Some(r) => r,
+            };
+            writeln!(stdout, "{sep1}")?;
+            continue;
+        }
+        if number_lines {
+            write!(
+                stdout,
+                " {: >width$} | ",
+                i.saturating_add(1),
+                width = line_number_width
+            )?;
+        }
+        writeln!(stdout, "{}", line?)?;
+    }
+    Ok(())
 }
 
 #[cfg(not(feature = "stdin"))]

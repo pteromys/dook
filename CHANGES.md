@@ -57,6 +57,7 @@ changelog 🧚
 - Cache tree-sitter query compilation for 4x speedup.
 - Add bash and zsh completions.
 - Order search by likely imports to try to get results sooner (python).
+- Fallback to `grep -r` and DIY i/o if `ripgrep` and `bat` aren't installed.
 
 ## 0.2.0 (2024-12-14)
 

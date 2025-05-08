@@ -1,3 +1,20 @@
+thread_local! {
+    static HAS_RIPGREP: std::cell::Cell<bool> = std::cell::Cell::new(
+        if std::process::Command::new("rg")
+            .arg("-V")
+            .stderr(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .output()
+            .is_ok()
+        {
+            true
+        } else {
+            log::warn!("ripgrep not found on PATH; falling back to grep -r which may be slow due to not checking .gitignore");
+            false
+        }
+    );
+}
+
 #[derive(Debug)]
 pub enum RipGrepError {
     NotLaunched(std::io::Error),
@@ -27,12 +44,18 @@ pub fn ripgrep(
     use std::io::BufRead;
 
     // first-pass search with ripgrep
-    let mut rg = std::process::Command::new("rg");
+    let mut rg: std::process::Command;
+    if HAS_RIPGREP.get() {
+        rg = std::process::Command::new("rg");
+        rg.args(["-l", "--sort=path", "-0"]);
+    } else {
+        rg = std::process::Command::new("grep");
+        rg.arg("-lIErZ");
+    }
     if ignore_case {
         rg.arg("-i");
     }
     let mut child = match rg
-        .args(["-l", "--sort=path", "-0"])
         .arg(pattern.as_str())
         .arg("./")
         .stderr(std::process::Stdio::inherit())
