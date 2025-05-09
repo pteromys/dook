@@ -330,7 +330,6 @@ impl Iterator for AncestorRangeIterator<'_> {
     type Item = std::ops::Range<usize>;
     fn next(&mut self) -> Option<Self::Item> {
         use tree_sitter::StreamingIterator;
-        // TODO interval arithmetic
         while let Some(parent) = self.node.parent() {
             let mut parent_matches =
                 self.cursor
