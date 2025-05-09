@@ -381,9 +381,6 @@ fn git_clone(
     use os_str_bytes::OsStrBytesExt;
 
     // clone if we don't have a repo
-    // TODO set GIT_HTTP_USER_AGENT to "git/$(git version | cut -d' ' -f3) (dook X.Y.Z)"
-    // some servers discriminate so it might be necessary to fallback to default user agent
-    // but in the case of reactive blocks we should fix the provoking bug rather than circumvent
     if let Ok(origin_url_bytes) = git(dest_path, ["remote", "get-url", "origin"]) {
         // fail if we have the wrong remote (we could clobber but let's make the user delete it manually)
         let existing_remote_url = std::ffi::OsStr::from_io_bytes(&origin_url_bytes)
@@ -403,6 +400,9 @@ fn git_clone(
         }
         ensure_parent_cache_dir(dest_path, repo_url)?;
         let mut command = std::process::Command::new("git");
+        // some servers discriminate so it might be necessary to fallback to default user agent
+        // but facing reactive blocks we should fix the provoking bug rather than circumvent
+        GIT_HTTP_USER_AGENT.with(|v| command.env("GIT_HTTP_USER_AGENT", v));
         command
             // blob:none if likely to reuse, tree:0 if disposable
             .args(["clone", "--filter=blob:none", repo_url])
@@ -468,12 +468,34 @@ where
     S: AsRef<std::ffi::OsStr>,
 {
     let mut command = std::process::Command::new("git");
+    GIT_HTTP_USER_AGENT.with(|v| command.env("GIT_HTTP_USER_AGENT", v));
     command
         .arg("-C")
         .arg(repo_root)
         .args(args)
         .stderr(std::process::Stdio::inherit());
     stdout_if_success(command)
+}
+
+thread_local! {
+    /// `GIT_HTTP_USER_AGENT="git/$(git version | awk '{print $3}') (dook X.Y.Z)"`
+    static GIT_HTTP_USER_AGENT: String = match std::process::Command::new("git")
+        .arg("version")
+        .stderr(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .output()
+    {
+        Err(_) => "".to_string(),  // other git operations are going to fail so whatevs
+        Ok(git_version_output) => {
+            let git_version = std::str::from_utf8(&git_version_output.stdout).unwrap_or("");
+            format!(
+                "{} ({} {})",
+                git_version.replace(" version ", "/"),
+                env!("CARGO_PKG_NAME"),
+                env!("CARGO_PKG_VERSION"),
+            )
+        }
+    };
 }
 
 fn download_tarball(
