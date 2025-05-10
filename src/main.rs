@@ -6,12 +6,12 @@ use dook::main_search;
 use dook::searches;
 use dook::{
     Config, ConfigParseError, LanguageName, Loader, LoaderError, QueryCompiler, QueryCompilerError,
-    RangeUnion,
 };
 use enum_derive_2018::EnumFromInner;
 use etcetera::AppStrategy;
 
 mod dumptree;
+mod outputs;
 mod run_grep;
 mod uncase;
 
@@ -31,14 +31,6 @@ impl From<EnablementLevel> for env_logger::fmt::WriteStyle {
             EnablementLevel::Always => Self::Always,
         }
     }
-}
-
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum)]
-enum WrapMode {
-    #[default]
-    Auto,
-    Never,
-    Character,
 }
 
 #[derive(clap::Parser, Debug)]
@@ -86,7 +78,7 @@ struct Cli {
         default_value_t,
         default_value_if("_chop_long_lines", clap::builder::ArgPredicate::IsPresent, "never")
     )]
-    wrap: WrapMode,
+    wrap: outputs::WrapMode,
 
     #[arg(
         long,
@@ -147,7 +139,7 @@ macro_attr_2018::macro_attr! {
         QueryCompilerError(QueryCompilerError),
         HomeDirError(etcetera::HomeDirError),
         RipGrepError(run_grep::RipGrepError),
-        PagerWriteError(PagerWriteError),
+        PagerWriteError(outputs::PagerWriteError),
         NotRecaseable(uncase::NotRecaseable),
     }
 }
@@ -173,7 +165,7 @@ impl std::fmt::Display for DookError {
 fn main() -> Result<std::process::ExitCode, DookError> {
     match main_inner() {
         // if stdout is gone, let's just leave quietly
-        Err(DookError::PagerWriteError(PagerWriteError::BrokenPipe)) => {
+        Err(DookError::PagerWriteError(outputs::PagerWriteError::BrokenPipe)) => {
             Ok(std::process::ExitCode::from(141))
         }
         // on error, print a message and then exit 1
@@ -201,8 +193,13 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
     };
 
     // get terminal properties before paging forks and we lose the tty
-    let bat_size = console::Term::stdout().size_checked();
     let is_term = console::Term::stdout().is_term();
+    let output_options = outputs::OutputOptions {
+        wrap: cli.wrap,
+        plain: cli.plain,
+        use_color: use_color == EnablementLevel::Always,
+        terminal_size: console::Term::stdout().size_checked(),
+    };
 
     // see how much approval we have to download parsers
     let downloads_policy = match cli.offline {
@@ -233,7 +230,7 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
             None => "less".to_string(),
         };
         let pager_command = if pager_command == "less" {
-            if cli.wrap == WrapMode::Never {
+            if cli.wrap == outputs::WrapMode::Never {
                 format!("{pager_command} -RFS")
             } else {
                 format!("{pager_command} -RF")
@@ -281,7 +278,7 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
             input.bytes.as_slice(),
             use_color == EnablementLevel::Always,
         )
-        .map_err(PagerWriteError::from)?;
+        .map_err(outputs::PagerWriteError::from)?;
         maybe_warn_paging_vs_downloads_policy(enable_paging, downloads_policy);
         return Ok(std::process::ExitCode::SUCCESS);
     }
@@ -395,16 +392,18 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
             };
             for name in results.matched_names {
                 if print_names.insert(name.clone()) {
-                    writeln!(stdout, "{name}").map_err(PagerWriteError::from)?;
+                    writeln!(stdout, "{name}").map_err(outputs::PagerWriteError::from)?;
                 }
             }
             // It could be nice to do a single bat invocation in the
             // rare case that consecutive recursions hit the same file,
             // but printing results as they come gets in the way.
             if !results.ranges.is_empty() {
-                match write_ranges(search_input, &results.ranges, &cli, use_color, bat_size) {
+                match outputs::write_ranges(search_input, &results.ranges, &output_options) {
                     // if stdout is gone, just leave quietly
-                    Err(PagerWriteError::BrokenPipe) => Err(PagerWriteError::BrokenPipe)?,
+                    Err(outputs::PagerWriteError::BrokenPipe) => {
+                        Err(outputs::PagerWriteError::BrokenPipe)?
+                    }
                     // otherwise continue, printing if there are errors
                     Err(e) => log::warn!("Error reading {search_input}: {e}"),
                     Ok(_) => (),
@@ -463,202 +462,6 @@ fn maybe_warn_paging_vs_downloads_policy(enable_paging: bool, downloads_policy: 
             log::warn!("Or write YES or NO to {settings_path:#?}");
         }
     }
-}
-
-#[derive(Debug)]
-enum PagerWriteError {
-    IoError(std::io::Error),
-    BrokenPipe,
-    ReaderDied(std::process::ExitStatus),
-}
-
-impl std::fmt::Display for PagerWriteError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            PagerWriteError::IoError(e) => write!(f, "{}", e),
-            PagerWriteError::BrokenPipe => write!(f, "broken pipe (someone closed our output)"),
-            PagerWriteError::ReaderDied(status) => {
-                write!(f, "formatting excerpt exited {}", status)
-            }
-        }
-    }
-}
-
-impl From<std::io::Error> for PagerWriteError {
-    fn from(value: std::io::Error) -> Self {
-        match value.kind() {
-            std::io::ErrorKind::BrokenPipe => Self::BrokenPipe,
-            _ => Self::IoError(value),
-        }
-    }
-}
-
-pub fn is_broken_pipe<T>(result: &std::io::Result<T>) -> bool {
-    match result {
-        Err(e) => e.kind() == std::io::ErrorKind::BrokenPipe,
-        Ok(_) => false,
-    }
-}
-
-thread_local! {
-    static HAS_BAT: std::cell::Cell<bool> = std::cell::Cell::new(
-        if std::process::Command::new("bat")
-            .arg("-V")
-            .stderr(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .output()
-            .is_ok()
-        {
-            true
-        } else {
-            log::warn!("bat not found on PATH; color and wrapping will be disabled");
-            false
-        }
-    );
-}
-
-fn write_ranges(
-    input: inputs::SearchInput,
-    ranges: &RangeUnion,
-    cli: &Cli,
-    use_color: EnablementLevel,
-    bat_size: Option<(u16, u16)>,
-) -> Result<(), PagerWriteError> {
-    if HAS_BAT.get() {
-        write_ranges_with_bat(input, ranges, cli, use_color, bat_size)
-    } else {
-        write_ranges_with_std_io(input, ranges, cli.plain == 0, bat_size)
-    }
-}
-
-fn write_ranges_with_bat(
-    input: inputs::SearchInput,
-    ranges: &RangeUnion,
-    cli: &Cli,
-    use_color: EnablementLevel,
-    bat_size: Option<(u16, u16)>,
-) -> Result<(), PagerWriteError> {
-    use std::io::Write;
-
-    let mut cmd = std::process::Command::new("bat");
-    cmd.arg("--paging=never")
-        .arg(format!("--wrap={:?}", cli.wrap).to_lowercase())
-        .arg(format!("--color={:?}", use_color).to_lowercase());
-    if let Some((_rows, cols)) = bat_size {
-        cmd.arg(format!("--terminal-width={}", cols));
-    }
-    if cli.plain > 0 {
-        cmd.arg("--plain");
-    }
-    cmd.args(
-        ranges
-            .iter_filling_gaps(1) // snip indicator - 8< - takes 1 line anyway
-            .map(|x| format!("--line-range={}:{}", x.start + 1, x.end)), // bat end is inclusive
-    )
-    .stderr(std::process::Stdio::inherit())
-    .stdout(std::process::Stdio::piped());
-    let mut child = match input {
-        inputs::SearchInput::Path(path) => cmd.arg(path).spawn(),
-        inputs::SearchInput::Loaded(stdin) => {
-            let mut child = cmd
-                .arg(format!("-l{}", stdin.language_name))
-                .stdin(std::process::Stdio::piped())
-                .spawn();
-            if let Ok(child) = &mut child {
-                let mut child_stdin = child
-                    .stdin
-                    .take()
-                    .expect("BUG: should have launched bat with stdin=piped()");
-                let stdin_clone = stdin.bytes.clone();
-                std::thread::spawn(move || {
-                    let result = child_stdin.write_all(&stdin_clone);
-                    if !is_broken_pipe(&result) {
-                        result.unwrap()
-                    }
-                });
-            }
-            child
-        }
-    }?;
-    // It'd be simpler to let `bat` write directly to our stdout, but we call
-    // std::io::copy ourselves (which uses more efficient syscalls than more
-    // explictly reading and writing) so that if the user quits the pager, we
-    // actually receive the SIGPIPE and can exit without burning more CPU or
-    // file I/O.
-    let mut child_stdout = child
-        .stdout
-        .take()
-        .expect("BUG: should have launched bat with stdout=piped()");
-    let copy_result = std::io::copy(&mut child_stdout, &mut std::io::stdout());
-    let wait_result = child.wait();
-    copy_result?;
-    let exit_status = wait_result?;
-    if exit_status.success() {
-        Ok(())
-    } else {
-        Err(PagerWriteError::ReaderDied(exit_status))
-    }
-}
-
-fn write_ranges_with_std_io(
-    input: inputs::SearchInput,
-    ranges: &RangeUnion,
-    number_lines: bool,
-    bat_size: Option<(u16, u16)>,
-) -> Result<(), PagerWriteError> {
-    use std::io::BufRead;
-    use std::io::Write;
-
-    let mut stdout = std::io::stdout();
-    let cols: usize = bat_size
-        .map(|(_rows, cols)| cols)
-        .unwrap_or(40)
-        .saturating_sub(1)
-        .into();
-    let sep1 = "-".repeat(cols);
-    let sep2 = "=".repeat(cols);
-    let Some(max_line_number) = ranges.end() else {
-        return Ok(());
-    };
-    let line_number_width = format!("{}", max_line_number).len();
-    let reader: Box<dyn BufRead> = match input {
-        inputs::SearchInput::Loaded(stdin) => {
-            writeln!(stdout, "{sep2}\nstdin\n{sep2}")?;
-            Box::new(std::io::Cursor::new(&stdin.bytes))
-        }
-        inputs::SearchInput::Path(path) => {
-            let reader = std::io::BufReader::new(std::fs::File::open(path)?);
-            writeln!(stdout, "{sep2}\n{}\n{sep2}", path.display())?;
-            Box::new(reader)
-        }
-    };
-    let mut ranges = ranges.iter_filling_gaps(1);
-    let Some(mut current_range) = ranges.next() else {
-        return Ok(());
-    };
-    for (i, line) in reader.lines().enumerate() {
-        if i < current_range.start {
-            continue;
-        }
-        if i >= current_range.end {
-            current_range = match ranges.next() {
-                None => return Ok(()),
-                Some(r) => r,
-            };
-            writeln!(stdout, "{sep1}")?;
-            continue;
-        }
-        if number_lines {
-            write!(
-                stdout,
-                " {: >width$} | ",
-                i.saturating_add(1),
-                width = line_number_width
-            )?;
-        }
-        writeln!(stdout, "{}", line?)?;
-    }
-    Ok(())
 }
 
 #[cfg(not(feature = "stdin"))]
