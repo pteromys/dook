@@ -262,3 +262,22 @@ fn html() {
         &cases,
     );
 }
+
+#[test]
+fn tex() {
+    let cases = [
+        ("thm", vec![12..12]),
+        ("qq", vec![13..13]),
+        ("R", vec![15..16]),
+        ("Introduction", vec![22..22, 26..41]),
+        ("intro", vec![22..22, 26..41]),
+        ("the_question", vec![22..22, 26..26, 29..29, 34..37]),
+        ("Roadmap", vec![22..22, 26..26, 39..41]),
+        ("methods", vec![22..22, 43..46]),
+    ];
+    verify_multipass_examples(
+        LanguageName::TEX,
+        include_bytes!("../test_cases/tex.tex"),
+        &cases,
+    );
+}

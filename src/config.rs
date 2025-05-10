@@ -675,7 +675,7 @@ fn get_language_info_uncached(
     let language = language_loader
         .get_language(parser_source)
         .map_err(GetLanguageInfoError::LoaderError)?;
-    LanguageInfo::new(language, &language_config)
+    LanguageInfo::new(language, language_name, &language_config)
 }
 
 pub struct LanguageInfo {
@@ -686,6 +686,8 @@ pub struct LanguageInfo {
     pub recurse_query: Option<RecurseQuery>,
     pub import_query: Option<ImportQuery>,
     pub injection_query: Option<InjectionQuery>,
+    // stuff not exposed to config because it's too special-cased or churning
+    pub names_trim_start: Option<&'static str>,
 }
 
 pub struct DefinitionQuery {
@@ -726,6 +728,7 @@ pub enum InjectionLanguageHint {
 impl LanguageInfo {
     pub fn new(
         language: tree_sitter::Language,
+        language_name: LanguageName,
         config: &LanguageConfigV3,
     ) -> Result<Self, GetLanguageInfoError> {
         fn compile_query(
@@ -881,6 +884,10 @@ impl LanguageInfo {
             import_query,
             injection_query,
             language,
+            names_trim_start: match language_name {
+                LanguageName::TEX => Some("\\"),
+                _ => None,
+            },
         })
     }
 }

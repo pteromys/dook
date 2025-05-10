@@ -82,6 +82,14 @@ pub fn end_point_to_end_line(p: tree_sitter::Point) -> usize {
     }
 }
 
+fn extract_name<'a>(bytes: &'a [u8], language_info: &config::LanguageInfo) -> &'a str {
+    let full_name = std::str::from_utf8(bytes).unwrap();
+    match language_info.names_trim_start {
+        None => full_name,
+        Some(prefix) => full_name.trim_start_matches(prefix),
+    }
+}
+
 pub fn find_names(
     source_code: &[u8],
     tree: &tree_sitter::Tree,
@@ -101,11 +109,9 @@ pub fn find_names(
             if capture.index != language_info.definition_query.index_name {
                 return None;
             }
-            let name = std::str::from_utf8(&source_code[capture.node.byte_range()])
-                .unwrap()
-                .to_owned();
-            if pattern.is_match(&name) {
-                Some(name)
+            let name = extract_name(&source_code[capture.node.byte_range()], language_info);
+            if pattern.is_match(name) {
+                Some(name.to_owned())
             } else {
                 None
             }
@@ -131,21 +137,18 @@ pub fn find_definition(
     let mut recurse_names: std::vec::Vec<String> = std::vec::Vec::new();
     let mut context_cursor = tree_sitter::QueryCursor::new();
     context_cursor.set_max_start_depth(Some(0));
-    let mut matches = cursor
-        .matches(
-            &language_info.definition_query.query,
-            tree.root_node(),
-            source_code,
-        )
-        .filter(|query_match| {
-            query_match.captures.iter().any(|capture| {
-                capture.index == language_info.definition_query.index_name
-                    && pattern.is_match(
-                        std::str::from_utf8(&source_code[capture.node.byte_range()]).unwrap(),
-                    )
-            })
-        });
+    let mut matches = cursor.matches(
+        &language_info.definition_query.query,
+        tree.root_node(),
+        source_code,
+    );
     while let Some(query_match) = matches.next() {
+        if ! query_match.captures.iter().any(|capture| {
+            capture.index == language_info.definition_query.index_name
+            && pattern.is_match(extract_name(&source_code[capture.node.byte_range()], language_info))
+        }) {
+            continue;
+        }
         for capture in query_match
             .captures
             .iter()

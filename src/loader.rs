@@ -58,6 +58,7 @@ pub enum LoaderError {
         verb: String,
         source: CalledProcessError,
     },
+    TreeSitterNotFound(std::io::Error),
     CannotMakeDirectoryForDownload {
         source: std::io::Error,
         url: String,
@@ -122,6 +123,9 @@ impl std::fmt::Display for LoaderError {
             Self::ChildProcessFailed { verb, source }
                 => write!(f, "Attempt to {} {} ({:?})",
                           verb, source.source, source.command),
+            Self::TreeSitterNotFound(e)
+                => write!(f, "Language requires `tree-sitter generate`, which failed: {} (is tree-sitter-cli installed?)",
+                          e),
             Self::CannotMakeDirectoryForDownload { url, dest_path, source }
                 => write!(f, "Could not make directory at {:?} to download {:?}: {}",
                           url, dest_path, source),
@@ -312,6 +316,56 @@ fn load_language_at_path(
             }
         }
     }
+    // ensure parser.c exists because some grammar repos don't check it in
+    if let Some(src_parent) = src_path.parent() {
+        let parser_c_path = src_path.join("parser.c");
+        if let Ok(false) = std::fs::exists(&parser_c_path) {
+            log::warn!("No file at {parser_c_path:?}; running tree-sitter generate");
+            let mut command = std::process::Command::new("tree-sitter");
+            let output = command
+                .current_dir(src_parent)
+                .arg("generate")
+                .stderr(std::process::Stdio::piped())
+                .output()
+                .map_err(LoaderError::TreeSitterNotFound)?;
+            match std::str::from_utf8(&output.stdout) {
+                Ok(v) => {
+                    let stdout = v.trim();
+                    if !stdout.is_empty() {
+                        log::warn!("tree-sitter generate: {stdout}");
+                    }
+                },
+                Err(_) => {
+                    if !output.stdout.is_empty() {
+                        log::warn!("tree-sitter generate: {:#?}", output.stdout);
+                    }
+                }
+            }
+            match std::str::from_utf8(&output.stderr) {
+                Ok(v) => {
+                    let stderr = v.trim();
+                    if !stderr.is_empty() {
+                        log::error!("tree-sitter generate: {stderr}");
+                    }
+                },
+                Err(_) => {
+                    if !output.stderr.is_empty() {
+                        log::error!("tree-sitter generate: {:#?}", output.stderr);
+                    }
+                }
+            }
+            if !output.status.success() {
+                return Err(LoaderError::ChildProcessFailed {
+                    verb: "regenerate parser.c".to_string(),
+                    source: CalledProcessError {
+                        command: format!("{:?}", command),
+                        source: output.status.into(),
+                    }
+                })
+            }
+        }
+    }
+    // ok now try recompiling
     loader.force_rebuild(true);
     let result = loader
         .load_language_at_path(tree_sitter_loader::CompileConfig::new(src_path, None, None))
@@ -333,25 +387,32 @@ fn load_language_if_tarball_older(
         .parser_lib_path
         .join(&tarball.name)
         .with_extension(std::env::consts::DLL_EXTENSION);
-    let Ok(dll_metadata) = std::fs::metadata(&dll_path) else {
-        return None;
-    };
-    let Ok(tarball_metadata) = std::fs::metadata(&tarball_path) else {
-        return None;
-    };
-    let Ok(dll_timestamp) = dll_metadata.modified() else {
-        return None;
-    };
-    let Ok(tarball_timestamp) = tarball_metadata.modified() else {
-        return None;
-    };
-    if tarball_timestamp >= dll_timestamp {
+    if !is_up_to_date_on_dependency(&dll_path, &tarball_path) {
         return None;
     }
     let Ok(language) = unsafe_load(&dll_path, &tarball.name) else {
         return None;
     };
     Some(language)
+}
+
+/// Return whether `target` is newer than `dep` on the filesystem.
+/// Nonexistent or unreadable files count as infinitely old.
+/// Filesystems without mtime count as never up to date.
+fn is_up_to_date_on_dependency(target: &std::path::Path, dep: &std::path::Path) -> bool {
+    let Ok(target_metadata) = std::fs::metadata(target) else {
+        return false;
+    };
+    let Ok(target_timestamp) = target_metadata.modified() else {
+        return false;
+    };
+    let Ok(dep_metadata) = std::fs::metadata(dep) else {
+        return true;
+    };
+    let Ok(dep_timestamp) = dep_metadata.modified() else {
+        return false;
+    };
+    target_timestamp > dep_timestamp
 }
 
 // primitives

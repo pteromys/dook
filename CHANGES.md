@@ -23,6 +23,7 @@ changelog 🧚
   - bash
   - lua
   - cython (.pyx)
+  - tex/latex (requires tree-sitter cli)
 - Config file format version 3 (never released v2):
   - Add integer "_version" field.
   - Switch to yaml since we use a lot of multi-line strings.
