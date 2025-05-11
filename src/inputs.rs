@@ -104,7 +104,10 @@ fn detect_language_str_from_bytes(bytes: &[u8], hint: Option<&str>) -> Result<&'
         return Ok(candidates[0]);
     }
 
-    let head = &bytes[..51200]; // hyperpolyglot::MAX_CONTENT_SIZE_BYTES
+    let head = match bytes.len() {
+        ..51200 => bytes, // hyperpolyglot::MAX_CONTENT_SIZE_BYTES
+        _ => &bytes[..51200],
+    };
     let head_end = head.iter().rposition(|b| b & 128 == 0).ok_or(Error::UnknownLanguage)?;
     let head_str = std::str::from_utf8(&head[..head_end])
         .map_err(|e| Error::UnreadableFile(e.to_string()))?;
