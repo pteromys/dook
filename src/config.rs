@@ -687,8 +687,10 @@ pub struct LanguageInfo {
     pub import_query: Option<ImportQuery>,
     pub injection_query: Option<InjectionQuery>,
     // stuff not exposed to config because it's too special-cased or churning
-    pub names_trim_start: Option<&'static str>,
+    pub name_transform: Option<Box<NameTransform>>,
 }
+
+pub type NameTransform = dyn Fn(&str) -> &str;
 
 pub struct DefinitionQuery {
     pub query: tree_sitter::Query,
@@ -884,8 +886,9 @@ impl LanguageInfo {
             import_query,
             injection_query,
             language,
-            names_trim_start: match language_name {
-                LanguageName::TEX => Some("\\"),
+            name_transform: match language_name {
+                LanguageName::TEX => Some(Box::new(|n| n.trim_start_matches("\\"))),
+                LanguageName::YAML => Some(Box::new(|n| n.trim_matches(['\'', '"']))),
                 _ => None,
             },
         })

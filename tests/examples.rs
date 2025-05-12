@@ -234,11 +234,12 @@ fn rust() {
 #[test]
 fn markdown_injections() {
     let mut cases = [
-        ("Nordstrom", vec![4..4, 8..8, 11..11, 13..13, 15..15]),
-        ("spartacus", vec![20..20, 24..25, 28..29]),
+        ("author", vec![3..3]),
+        ("Nordstrom", vec![10..10, 14..14, 17..17, 19..19, 21..21]),
+        ("spartacus", vec![26..26, 30..31, 34..35]),
     ];
     if cfg!(feature = "stdin") {
-        cases[1].1.extend_from_slice(&[32..32, 34..34]);
+        cases[2].1.extend_from_slice(&[38..38, 40..40]);
     }
     verify_multipass_examples(
         LanguageName::MARKDOWN,

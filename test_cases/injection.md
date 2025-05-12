@@ -1,3 +1,9 @@
+---
+title: Markdown Injections Test Case
+"author": you
+date: today
+---
+
 Injection Test Case
 ===================
 

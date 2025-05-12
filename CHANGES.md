@@ -14,6 +14,7 @@ changelog 🧚
 - Support injections (embedded fragments in another language):
   - rust inside rust macros
   - fenced code blocks inside markdown
+  - yaml front-matter inside markdown
   - js and css inside html
 - New default languages:
   - markdown (look up sections by header)
@@ -24,6 +25,7 @@ changelog 🧚
   - lua
   - cython (.pyx)
   - tex/latex (requires tree-sitter cli)
+  - yaml
 - Config file format version 3 (never released v2):
   - Add integer "_version" field.
   - Switch to yaml since we use a lot of multi-line strings.

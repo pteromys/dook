@@ -19,6 +19,7 @@ impl LanguageName {
     pub const HTML: Self = Self("HTML");
     pub const CYTHON: Self = Self("Cython");
     pub const TEX: Self = Self("TeX");
+    pub const YAML: Self = Self("YAML");
 
     /// Convert language names from the strings we used in the v1 and v2 config format
     pub fn from_legacy(s: &str) -> Result<Self, UnknownLanguageError> {

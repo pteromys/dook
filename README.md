@@ -52,6 +52,7 @@ Also attempts to find assignments, class definitions, etc—because why should y
 - Rust
 - Shell (everything is just assumed to be bash)
 - TeX (as LaTeX; requires the [tree-sitter CLI](https://tree-sitter.github.io/tree-sitter/creating-parsers/1-getting-started.html#installation))
+- YAML
 
 ## Alternatives and prior art
 

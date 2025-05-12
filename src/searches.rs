@@ -84,9 +84,9 @@ pub fn end_point_to_end_line(p: tree_sitter::Point) -> usize {
 
 fn extract_name<'a>(bytes: &'a [u8], language_info: &config::LanguageInfo) -> &'a str {
     let full_name = std::str::from_utf8(bytes).unwrap();
-    match language_info.names_trim_start {
+    match language_info.name_transform.as_ref() {
         None => full_name,
-        Some(prefix) => full_name.trim_start_matches(prefix),
+        Some(f) => f(full_name),
     }
 }
 
