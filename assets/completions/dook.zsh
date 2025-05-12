@@ -47,7 +47,16 @@ _dook_symbols () {
 		# this is probably wrong if TAB is bound to expand-or-complete-prefix
 		# and the word under the cursor is quoted
 		# so hopefully everybody stayed on the default expand-or-complete
-		symbols=( $(dook -i --only-names "${PREFIX}.*${SUFFIX}" 2>/dev/null) )
+		local query
+		if [ "X$compstate[quote]" = "X'" ]; then
+			query="${PREFIX}.*${SUFFIX}"
+		else
+			query="${(Q)PREFIX}.*${(Q)SUFFIX}"
+		fi
+		local results="$(dook -i --only-names "$query" 2>/dev/null | sed -e 's/[][\.+*?()|{}^$#&~-]/\\&/g')"
+		if [ -n "$results" ]; then
+			symbols=( "${(qf)results}" )
+		fi
 	fi
 	# Send contents of `symbols` to zsh completion.
 	# The description here overrides the one at the end of the _arguments call.

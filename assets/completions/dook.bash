@@ -1,22 +1,13 @@
 _dook_module()
 {
-	COMPREPLY=()
-	local cur="${COMP_WORDS[COMP_CWORD]}"
-	local prev="${COMP_WORDS[COMP_CWORD-1]}"
+	# delegate to shared completer for variable names and redirections
+	local cur prev words cword comp_args was_split
+	_comp_initialize -s -- "$@" || return
 
-	# support syntax like --color=always if = is in COMP_WORDBREAKS
-	local prev2="${COMP_WORDS[COMP_CWORD-2]}"
-	local cur_crossing_equals
-	_comp_get_words -n = -c cur_crossing_equals
-	if [ "X$cur_crossing_equals" = "X${prev}=" ]; then cur=''
-	elif [ "X$cur_crossing_equals" = "X${prev2}=${cur}" ]; then
-		cur="${cur#=}"
-		prev="$prev2"
-	elif [ "X$cur_crossing_equals" = "X=${cur}" ]; then cur="$cur_crossing_equals"
-	fi
+	COMPREPLY=()
 
 	# options that take arguments in the next word
-	case $prev in
+	case ${prev//[\"\']} in
 		'--color'|'--paging')
 			COMPREPLY=( $(compgen -W "auto never always" -- "$cur") )
 			return 0
@@ -36,13 +27,15 @@ _dook_module()
 	esac
 
 	# partial current word
-	case $cur in
+	local dcur=${cur%%[\"\']}
+	dcur=${dcur##[\"\']}
+	case $dcur in
 		# options
 		'-'*)
 			local dookhelp=( $(dook --help) )
 			local startswithhyphen=( "${dookhelp[@]##[^-]*}" )
 			local dookoptions=( "${startswithhyphen[@]%%[,.=]*}" )
-			COMPREPLY=( $(compgen -W "${dookoptions[*]@Q}" -- "$cur") )
+			COMPREPLY=( $(compgen -W "${dookoptions[*]@Q}") )
 			return 0
 			;;
 		# don't complete on an empty string
@@ -52,7 +45,22 @@ _dook_module()
 	esac
 
 	# ask dook to search for names
-	COMPREPLY=( $(compgen -W '$( dook -i --only-names "${cur}.*" 2>/dev/null )' -- "$cur" ) )
+	# eat a level of escapes since cur is given to us quoted
+	local query REPLY escape_sub
+	if [[ "$cur" = \'* ]] && _comp_dequote "$cur" || _comp_dequote "${cur}'"; then
+		query="${REPLY}.*"  # this is output of _comp_dequote if it succeeded
+		escape_sub="s/'/'\\\\''/g"  # put inner quotes back at the end
+	elif _comp_dequote "${cur}\"" || _comp_dequote "$cur"; then
+		query="${REPLY}.*"
+		# if unquoted or double-quoted at end, re-escape everything
+		escape_sub='s/[^A-Za-z0-9,._+:@%/-]/\\&/g'
+	else  # idk I guess more exotic quoting going on
+		query="${cur}.*"
+		escape_sub='s/[^A-Za-z0-9,._+:@%/-]/\\&/g'
+	fi
+	local IFS=$'\n'
+	COMPREPLY=( $( compgen -W '$( dook -i --only-names "$query" 2>/dev/null |
+		sed -e '"'"'s/[][\.+*?()|{}^$#&~-]/\\&/g'"'"'";${escape_sub}" )' ) )
 }
 
 complete -F _dook_module dook

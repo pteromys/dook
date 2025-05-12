@@ -40,6 +40,6 @@ spartacus: int
 spartacus=5
 ```
 
-### Whee
+### Whee I'm superfluous
 
 hey
