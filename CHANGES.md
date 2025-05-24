@@ -24,6 +24,7 @@ changelog 🧚
   - bash
   - lua
   - cython (.pyx)
+  - ipynb (as markdown with embedded python fragments)
   - tex/latex (requires tree-sitter cli)
   - yaml
 - Config file format version 3 (never released v2):

@@ -58,10 +58,12 @@ fn write_ranges_with_bat(
     let mut child = match input {
         inputs::SearchInput::Path(path) => cmd.arg(path).spawn(),
         inputs::SearchInput::Loaded(stdin) => {
-            let mut child = cmd
-                .arg(format!("-l{}", stdin.language_name))
-                .stdin(std::process::Stdio::piped())
-                .spawn();
+            if let Some(recipe) = stdin.recipe.as_ref() {
+                cmd.arg("--file-name").arg(recipe);
+            }
+            cmd.arg(format!("-l{}", stdin.language_name))
+                .stdin(std::process::Stdio::piped());
+            let mut child = cmd.spawn();
             if let Ok(child) = &mut child {
                 let mut child_stdin = child
                     .stdin

@@ -8,7 +8,11 @@ mod loader;
 mod range_union;
 pub mod searches;
 pub mod main_search;
+pub mod subfiles;
+mod ipynb;
+mod multi_line_string;
 
+use multi_line_string::MultiLineString;
 pub use config::{Config, QueryCompiler, ConfigParseError, QueryCompilerError};
 pub use language_name::LanguageName;
 pub use loader::{Loader, LoaderError};

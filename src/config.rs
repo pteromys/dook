@@ -1,4 +1,4 @@
-use crate::language_name::LanguageName;
+use crate::{LanguageName, MultiLineString};
 use crate::loader;
 
 const DEFAULT_CONFIG: &str = include_str!("dook.yml");
@@ -14,57 +14,6 @@ pub fn dirs() -> Result<impl etcetera::AppStrategy, etcetera::HomeDirError> {
         author: "melonisland".to_string(),
         app_name: "dook".to_string(),
     })
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct MultiLineString(String);
-
-impl AsRef<str> for MultiLineString {
-    fn as_ref(&self) -> &str {
-        let Self(inner) = self;
-        inner
-    }
-}
-
-impl From<&MultiLineString> for String {
-    fn from(mls: &MultiLineString) -> Self {
-        let MultiLineString(inner) = mls;
-        inner.clone()
-    }
-}
-
-impl<'de> merde::Deserialize<'de> for MultiLineString {
-    async fn deserialize(
-        de: &mut dyn merde::DynDeserializer<'de>,
-    ) -> Result<Self, merde::MerdeError<'de>> {
-        match de.next().await? {
-            merde::Event::Str(v) => Ok(MultiLineString(String::from(v))),
-            merde::Event::ArrayStart(_) => {
-                let mut vs: Vec<String> = Vec::new();
-                loop {
-                    match de.next().await? {
-                        merde::Event::ArrayEnd => break,
-                        merde::Event::Str(v) => vs.push(String::from(v)),
-                        ev => Err(merde::MerdeError::UnexpectedEvent {
-                            got: merde::EventType::from(&ev),
-                            expected: &[merde::EventType::Str],
-                            help: Some(String::from(
-                                "multiline string must be a string or an array of strings",
-                            )),
-                        })?,
-                    }
-                }
-                Ok(MultiLineString(vs.join("\n")))
-            }
-            ev => Err(merde::MerdeError::UnexpectedEvent {
-                got: merde::EventType::from(&ev),
-                expected: &[merde::EventType::Str, merde::EventType::ArrayStart],
-                help: Some(String::from(
-                    "multiline string must be a string or an array of strings",
-                )),
-            })?,
-        }
-    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -158,7 +107,7 @@ impl From<LanguageConfigV1> for LanguageConfigV3 {
             definition_query: match value.match_patterns.len() {
                 0 => None,
                 _ => Some(join_strs(
-                    value.match_patterns.iter().map(|s| s.into()).collect(),
+                    value.match_patterns.into_iter().map(|s| s.into()).collect(),
                     "\n",
                 )),
             },
@@ -176,10 +125,10 @@ impl From<LanguageConfigV1> for LanguageConfigV3 {
             },
             recurse_query: value
                 .recurse_patterns
-                .map(|v| join_strs(v.iter().map(|s| s.into()).collect(), "\n")),
+                .map(|v| join_strs(v.into_iter().map(|s| s.into()).collect(), "\n")),
             import_query: value
                 .import_patterns
-                .map(|v| join_strs(v.iter().map(|s| s.into()).collect(), "\n")),
+                .map(|v| join_strs(v.into_iter().map(|s| s.into()).collect(), "\n")),
             injection_query: None,
         }
     }

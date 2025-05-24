@@ -1,6 +1,12 @@
 use crate::language_name::LanguageName;
-use crate::{config, inputs, loader, range_union, searches};
+use crate::{config, inputs, loader, range_union, searches, subfiles};
 use enum_derive_2018::EnumFromInner;
+
+#[derive(Debug, Clone, Default)]
+pub struct SubfileResults {
+    pub results: SingleFileResults,
+    pub subfile: Option<inputs::LoadedFile>,
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct SingleFileResults {
@@ -38,42 +44,65 @@ impl std::fmt::Display for SinglePassError {
     }
 }
 
+pub fn search_one_file_and_all_subfiles(
+    params: &SearchParams,
+    loaded_file: &inputs::LoadedFile,
+    query_compiler: &mut config::QueryCompiler,
+) -> Result<Vec<SubfileResults>, SinglePassError> {
+    let mut results = vec![];
+    let mut subfiles: Vec<Option<inputs::LoadedFile>> = vec![None];
+    while let Some(subfile) = subfiles.pop() {
+        let subfile_ref = match subfile.as_ref() {
+            Some(f) => f,
+            None => loaded_file,
+        };
+        let subfile_results = match search_one_file(params, subfile_ref, query_compiler) {
+            Ok(x) => x,
+            Err(e) => {
+                log::warn!("Skipping {}: {}", subfile_ref.describe(), e);
+                continue;
+            }
+        };
+        results.push(SubfileResults {
+            results: subfile_results.results,
+            subfile,
+        });
+        subfiles.extend(subfile_results.subfiles.into_iter().map(Some));
+    }
+    Ok(results)
+}
+
+
+#[derive(Debug, Clone, Default)]
+pub struct SingleFileResultsWithSubfiles {
+    pub results: SingleFileResults,
+    pub subfiles: Vec<inputs::LoadedFile>,
+}
+
 pub fn search_one_file(
     params: &SearchParams,
-    input: inputs::SearchInput,
+    loaded_file: &inputs::LoadedFile,
     query_compiler: &mut config::QueryCompiler,
-) -> Result<SingleFileResults, SinglePassError> {
+) -> Result<SingleFileResultsWithSubfiles, SinglePassError> {
     let mut results = SingleFileResults::default();
+    let mut subfiles = vec![];
 
-    // read the whole file as few times as possible:
-    // - only before traversing the injections tree
-    // - only after we know we'll be able to do anything with the language
-    log::debug!("parsing {input}");
-    let path_input: inputs::LoadedFile;
-    let (file_bytes, root_language) = match input {
-        inputs::SearchInput::Loaded(f) => (f.bytes.as_slice(), f.language_name),
-        inputs::SearchInput::Path(path) => {
-            path_input = inputs::LoadedFile::load(path)?;
-            (path_input.bytes.as_slice(), path_input.language_name)
-        }
-    };
     // parse the whole file, then injections
     let mut injections: Vec<Option<searches::InjectionRange>> = vec![None];
     while let Some(injection) = injections.pop() {
         let pass_results = match search_one_file_with_one_injection(
             params,
             query_compiler,
-            file_bytes,
-            root_language,
+            loaded_file,
             injection.as_ref(),
         ) {
             Ok(x) => x,
             Err(e) => {
                 let source_description = match injection {
-                    None => input.to_string(),
+                    None => loaded_file.describe(),
                     Some(i) => format!(
                         "{} {}-{}",
-                        input,
+                        loaded_file.describe(),
                         i.range.start_point.row.saturating_add(1),
                         i.range.end_point.row.saturating_add(1),
                     ),
@@ -99,16 +128,20 @@ pub fn search_one_file(
                         .map(|o| (pass_results.language_name, o)),
                 );
             }
+            SearchResult::Subfiles(extracted_files) => {
+                subfiles.extend(extracted_files);
+            }
         }
         injections.extend(pass_results.injections.into_iter().map(Some));
     }
-    Ok(results)
+    Ok(SingleFileResultsWithSubfiles { results, subfiles })
 }
 
 #[derive(Debug, Clone)]
 pub enum SearchResult {
     Definitions(searches::SearchResult),
     Names(Vec<String>),
+    Subfiles(Vec<inputs::LoadedFile>),
 }
 
 #[derive(Debug, Clone)]
@@ -121,16 +154,20 @@ pub struct SinglePassResults {
 pub fn search_one_file_with_one_injection(
     params: &SearchParams,
     query_compiler: &mut config::QueryCompiler,
-    file_bytes: &[u8],
-    root_language: LanguageName,
+    loaded_file: &inputs::LoadedFile,
     injection: Option<&searches::InjectionRange>,
 ) -> Result<SinglePassResults, SinglePassError> {
     use std::str::FromStr;
 
-    let detect_start = std::time::Instant::now();
     // determine language
+    let file_bytes = &loaded_file.bytes;
+    let detect_start = std::time::Instant::now();
+    let injection_bytes = match &injection {
+        None => file_bytes,
+        Some(injection) => &file_bytes[injection.range.start_byte..injection.range.end_byte],
+    };
     let language_name = match &injection {
-        None => root_language,
+        None => loaded_file.language_name,
         Some(injection) => {
             match injection
                 .language_hint
@@ -139,7 +176,7 @@ pub fn search_one_file_with_one_injection(
             {
                 Some(hinted) => hinted,
                 None => inputs::detect_language_from_bytes(
-                    &file_bytes[injection.range.start_byte..injection.range.end_byte],
+                    injection_bytes,
                     injection.language_hint.as_ref().map(AsRef::as_ref),
                 )?,
             }
@@ -154,6 +191,22 @@ pub fn search_one_file_with_one_injection(
         language_name,
         detect_start.elapsed()
     );
+
+    let base_recipe = match injection {
+        None => loaded_file.recipe.clone(),
+        Some(i) => Some(match loaded_file.recipe.as_ref() {
+            None => format!("sed -ne {},{}p", i.range.start_point.row, i.range.end_point.row),
+            Some(recipe) => format!("{recipe} | sed -ne {},{}p", i.range.start_point.row, i.range.end_point.row),
+        })
+    };
+    if let Some(extracted_files) = subfiles::extract_subfiles(language_name, injection_bytes, base_recipe) {
+        return Ok(SinglePassResults {
+            language_name,
+            search_result: SearchResult::Subfiles(extracted_files),
+            injections: vec![],
+        })
+    }
+
     // get language parser
     let parse_start = std::time::Instant::now();
     let language_info = query_compiler.get_language_info(language_name)?;

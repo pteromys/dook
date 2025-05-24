@@ -50,6 +50,7 @@ fn verify_multipass_examples(
     let input = inputs::LoadedFile {
         bytes: source.into(),
         language_name,
+        recipe: None,
     };
     for (query, expect_ranges) in cases {
         let current_pattern = regex::Regex::new(query).unwrap();
@@ -61,12 +62,9 @@ fn verify_multipass_examples(
             only_names: false,
             recurse: false,
         };
-        let result = main_search::search_one_file(
-            &search_params,
-            inputs::SearchInput::Loaded(&input),
-            &mut query_compiler,
-        )
-        .unwrap();
+        let result = main_search::search_one_file(&search_params, &input, &mut query_compiler)
+            .unwrap()
+            .results;
         let result_vec: Vec<_> = result.ranges.iter().map(|r| r.start + 1..r.end).collect();
         assert_eq!(
             result_vec, *expect_ranges,

@@ -1,4 +1,4 @@
-use crate::language_name::LanguageName;
+use crate::{LanguageName, QueryCompiler, QueryCompilerError};
 
 #[derive(Copy, Clone)]
 pub enum SearchInput<'a> {
@@ -9,22 +9,25 @@ pub enum SearchInput<'a> {
 impl std::fmt::Display for SearchInput<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Loaded(_) => write!(f, "input"),
             Self::Path(path) => write!(f, "{path:?}"),
+            Self::Loaded(loaded) => write!(f, "{}", loaded.describe()),
         }
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct LoadedFile {
+    pub recipe: Option<String>,
     pub bytes: Vec<u8>,
     pub language_name: LanguageName,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Error {
     UnknownLanguage,
     UnsupportedLanguage(String),
     UnreadableFile(String),
+    UnconfiguredLanguage(QueryCompilerError),
     EmptyStdin,
 }
 
@@ -36,17 +39,35 @@ impl std::fmt::Display for Error {
             Self::UnsupportedLanguage(language_name)
                 => write!(f, "unsupported language {:?}", language_name),
             Self::UnreadableFile(message) => write!(f, "{}", message),
+            Self::UnconfiguredLanguage(e) => write!(f, "{}", e),
             Self::EmptyStdin => write!(f, "stdin is empty")
         }
     }
 }
 
 impl LoadedFile {
+    /// Detect the language of a file; if successful, load it into memory.
     pub fn load(path: impl AsRef<std::path::Path>) -> Result<Self, Error> {
+        let language_name = detect_language_from_path(path.as_ref())?;
+        Self::load_as(path, language_name)
+    }
+
+    /// Detect the language of a file; if it's one we can parse, load it into memory.
+    pub fn load_if_parseable(path: impl AsRef<std::path::Path>, query_compiler: &mut QueryCompiler) -> Result<Self, Error> {
+        let language_name = detect_language_from_path(path.as_ref())?;
+        if language_name != LanguageName::IPYNB {
+            query_compiler.get_language_info(language_name)
+                .map_err(Error::UnconfiguredLanguage)?;
+        }
+        Self::load_as(path, language_name)
+    }
+
+    fn load_as(path: impl AsRef<std::path::Path>, language_name: LanguageName) -> Result<Self, Error> {
         Ok(Self {
-            language_name: detect_language_from_path(path.as_ref())?,
+            language_name,
             bytes: std::fs::read(path.as_ref())
                 .map_err(|e| Error::UnreadableFile(e.to_string()))?,
+            recipe: Some(format!("cat {:#?}", path.as_ref())),
         })
     }
 
@@ -59,9 +80,17 @@ impl LoadedFile {
             Ok(_) => detect_language_from_bytes(&bytes, None),
         }?;
         Ok(LoadedFile {
+            recipe: None,
             bytes,
             language_name,
         })
+    }
+
+    pub fn describe(&self) -> String {
+        match self.recipe.as_ref() {
+            None => "input".to_string(),
+            Some(recipe) => format!("{recipe:?}"),
+        }
     }
 }
 

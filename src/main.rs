@@ -373,9 +373,34 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
                 )),
             };
 
-            let results = match main_search::search_one_file(
+            // read the whole file as few times as possible
+            // - only before traversing the injections tree
+            // - only after we know we'll be able to do anything with the language
+            // - but not accounting for changes in what we're looking for (recursion)
+            log::debug!("parsing {search_input}");
+            let path_input: inputs::LoadedFile;
+            let loaded_file = match search_input {
+                inputs::SearchInput::Loaded(f) => f,
+                inputs::SearchInput::Path(path) => {
+                    path_input =
+                        match inputs::LoadedFile::load_if_parseable(path, &mut query_compiler) {
+                            Err(inputs::Error::UnreadableFile(message)) => {
+                                log::warn!("Skipping unreadable {path:?}: {message}");
+                                continue;
+                            }
+                            Err(e) => {
+                                log::warn!("Skipping {path:?}: {e}");
+                                continue;
+                            }
+                            Ok(f) => f,
+                        };
+                    &path_input
+                }
+            };
+
+            let result_vec = match main_search::search_one_file_and_all_subfiles(
                 &search_params,
-                search_input,
+                loaded_file,
                 &mut query_compiler,
             ) {
                 Err(main_search::SinglePassError::Input(inputs::Error::UnreadableFile(
@@ -390,47 +415,53 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
                 }
                 Ok(results) => results,
             };
-            for name in results.matched_names {
-                if print_names.insert(name.clone()) {
-                    writeln!(stdout, "{name}").map_err(outputs::PagerWriteError::from)?;
-                }
-            }
-            // It could be nice to do a single bat invocation in the
-            // rare case that consecutive recursions hit the same file,
-            // but printing results as they come gets in the way.
-            if !results.ranges.is_empty() {
-                match outputs::write_ranges(search_input, &results.ranges, &output_options) {
-                    // if stdout is gone, just leave quietly
-                    Err(outputs::PagerWriteError::BrokenPipe) => {
-                        Err(outputs::PagerWriteError::BrokenPipe)?
+            for main_search::SubfileResults { results, subfile } in result_vec {
+                for name in results.matched_names {
+                    if print_names.insert(name.clone()) {
+                        writeln!(stdout, "{name}").map_err(outputs::PagerWriteError::from)?;
                     }
-                    // otherwise continue, printing if there are errors
-                    Err(e) => log::warn!("Error reading {search_input}: {e}"),
-                    Ok(_) => (),
                 }
-            }
-            for name in results.recurse_names {
-                if local_patterns
-                    .iter()
-                    .all(|pattern| !pattern.is_match(&name))
-                {
-                    recurse_defs.push(name)
+                // It could be nice to do a single bat invocation in the
+                // rare case that consecutive recursions hit the same file,
+                // but printing results as they come gets in the way.
+                if !results.ranges.is_empty() {
+                    let range_target = match subfile.as_ref() {
+                        Some(subfile) => inputs::SearchInput::Loaded(subfile),
+                        None => search_input,
+                    };
+                    match outputs::write_ranges(range_target, &results.ranges, &output_options) {
+                        // if stdout is gone, just leave quietly
+                        Err(outputs::PagerWriteError::BrokenPipe) => {
+                            Err(outputs::PagerWriteError::BrokenPipe)?
+                        }
+                        // otherwise continue, printing if there are errors
+                        Err(e) => log::warn!("Error reading {range_target}: {e}"),
+                        Ok(_) => (),
+                    }
                 }
-            }
-            // follow probable imports if we know about them
-            for (language_name, import_pattern) in results.import_origins {
-                if import_origins.insert((language_name, import_pattern.clone())) {
-                    log::debug!("sorting files matching {:?} to the front", import_pattern);
-                    filenames
-                        .make_contiguous()
-                        .sort_by_cached_key(|path| match path {
-                            None => 0,
-                            Some(path) => dook::dep_resolution::dissimilarity(
-                                language_name,
-                                &import_pattern,
-                                path,
-                            ),
-                        });
+                for name in results.recurse_names {
+                    if local_patterns
+                        .iter()
+                        .all(|pattern| !pattern.is_match(&name))
+                    {
+                        recurse_defs.push(name)
+                    }
+                }
+                // follow probable imports if we know about them
+                for (language_name, import_pattern) in results.import_origins {
+                    if import_origins.insert((language_name, import_pattern.clone())) {
+                        log::debug!("sorting files matching {:?} to the front", import_pattern);
+                        filenames
+                            .make_contiguous()
+                            .sort_by_cached_key(|path| match path {
+                                None => 0,
+                                Some(path) => dook::dep_resolution::dissimilarity(
+                                    language_name,
+                                    &import_pattern,
+                                    path,
+                                ),
+                            });
+                    }
                 }
             }
         }

@@ -40,6 +40,7 @@ tree-sitter-loader = { version = "^0.25", default-features = false, features = [
 tree-sitter-python = { version = "0.23.6", optional = true }
 heck = "0.5.0"
 phf = { version = "0.11.3", features = ["macros"] }
+merde_json = "10.0.6"
 
 [[bin]]
 path = "src/main.rs"
