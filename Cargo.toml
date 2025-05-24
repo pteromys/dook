@@ -50,4 +50,9 @@ lto = true
 strip = "symbols"
 codegen-units = 1
 
+[profile.profiling]
+inherits = "release"
+strip = "none"
+debug = 1
+
 # rustflags are in ./.cargo/config.toml
