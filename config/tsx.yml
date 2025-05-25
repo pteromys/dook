@@ -1,0 +1,14 @@
+version: 4
+parser:
+  tarball:
+    name: tsx
+    sha256hex: 2d324af0616a692cc6fcaea35442a816decb2ef0d05242953cb1feb15a5dc72d
+    subdirectory: tsx/src
+    url: https://github.com/tree-sitter/tree-sitter-typescript/releases/download/v0.23.2/tree-sitter-typescript.tar.xz
+extends: TypeScript
+definition_query: |
+  ...
+  (jsx_attribute (property_identifier) @name) @def
+parent_query: |
+  ...
+  (jsx_opening_element attribute: (_) @exclude)

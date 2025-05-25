@@ -1,0 +1,55 @@
+version: 4
+parser:
+  tarball:
+    name: rust
+    sha256hex: 2f8f303a990da637a706a37064c19be3b7ae7957b47f000e867bd4c11670867b
+    subdirectory: src
+    url: https://github.com/tree-sitter/tree-sitter-rust/releases/download/v0.23.2/tree-sitter-rust.tar.xz
+definition_query: |
+  [
+    (function_item name: (_) @name)
+    (function_signature_item name: (_) @name)
+    (let_declaration pattern: [
+      (identifier) @name
+    ])
+    (const_item name: (_) @name)
+    (enum_item name: (_) @name)
+    (enum_variant name: (_) @name)
+    (impl_item type: [
+      (_) @name
+      (generic_type type: [
+        (_) @name
+        (scoped_identifier name: (_) @name)
+        (scoped_type_identifier name: (_) @name)])
+      (scoped_type_identifier name: (_) @name)])
+    (impl_item trait: [
+      (_) @name
+      (generic_type type: [
+        (_) @name
+        (scoped_identifier name: (_) @name)
+        (scoped_type_identifier name: (_) @name)])
+      (scoped_type_identifier name: (_) @name)])
+    (macro_definition name: (_) @name)
+    (mod_item name: (_) @name)
+    (static_item name: (_) @name)
+    (struct_item name: (_) @name)
+    (trait_item name: (_) @name)
+    (type_item name: (_) @name)
+    (union_item name: (_) @name)
+    (field_declaration name: (_) @name)
+  ] @def
+sibling_node_types:
+- line_comment
+- block_comment
+- attribute_item
+parent_query: |
+  (function_item body: (_) @exclude)
+  (impl_item body: (_) @exclude)
+  (struct_item body: (_) @exclude)
+  (enum_item body: (_) @exclude)
+  (macro_invocation (token_tree) @exclude)
+  (trait_item body: (_) @exclude)
+injection_query: |
+  (macro_invocation
+    (token_tree) @injection.content
+    (#set! injection.language "Rust"))

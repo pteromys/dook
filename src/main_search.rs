@@ -1,5 +1,5 @@
-use crate::language_name::LanguageName;
-use crate::{config, inputs, loader, range_union, searches, subfiles};
+use crate::LanguageName;
+use crate::{inputs, loader, query_compiler, range_union, searches, subfiles};
 use enum_derive_2018::EnumFromInner;
 
 #[derive(Debug, Clone, Default)]
@@ -29,7 +29,7 @@ macro_attr_2018::macro_attr! {
         Input(inputs::Error),
         FileParse(searches::FileParseError),
         LoaderError(loader::LoaderError),
-        QueryCompilerError(config::QueryCompilerError),
+        QueryCompilerError(query_compiler::QueryCompilerError),
     }
 }
 
@@ -47,7 +47,7 @@ impl std::fmt::Display for SinglePassError {
 pub fn search_one_file_and_all_subfiles(
     params: &SearchParams,
     loaded_file: &inputs::LoadedFile,
-    query_compiler: &mut config::QueryCompiler,
+    query_compiler: &mut query_compiler::QueryCompiler,
 ) -> Result<Vec<SubfileResults>, SinglePassError> {
     let mut results = vec![];
     let mut subfiles: Vec<Option<inputs::LoadedFile>> = vec![None];
@@ -82,7 +82,7 @@ pub struct SingleFileResultsWithSubfiles {
 pub fn search_one_file(
     params: &SearchParams,
     loaded_file: &inputs::LoadedFile,
-    query_compiler: &mut config::QueryCompiler,
+    query_compiler: &mut query_compiler::QueryCompiler,
 ) -> Result<SingleFileResultsWithSubfiles, SinglePassError> {
     let mut results = SingleFileResults::default();
     let mut subfiles = vec![];
@@ -153,7 +153,7 @@ pub struct SinglePassResults {
 
 pub fn search_one_file_with_one_injection(
     params: &SearchParams,
-    query_compiler: &mut config::QueryCompiler,
+    query_compiler: &mut query_compiler::QueryCompiler,
     loaded_file: &inputs::LoadedFile,
     injection: Option<&searches::InjectionRange>,
 ) -> Result<SinglePassResults, SinglePassError> {

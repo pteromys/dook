@@ -19,7 +19,7 @@ impl std::fmt::Display for DownloadsPolicy {
 
 /// Get saved downloads policy setting from downloads_policy.txt.
 pub fn get_downloads_policy() -> DownloadsPolicy {
-    get_downloads_policy_from_path(settings_path().as_ref())
+    get_downloads_policy_from_path(downloads_policy_path().as_ref())
 }
 
 pub fn get_downloads_policy_from_path(path: Option<&std::path::PathBuf>) -> DownloadsPolicy {
@@ -43,9 +43,9 @@ pub fn get_downloads_policy_from_path(path: Option<&std::path::PathBuf>) -> Down
     }
 }
 
-pub fn settings_path() -> Option<std::path::PathBuf> {
+pub fn downloads_policy_path() -> Option<std::path::PathBuf> {
     use etcetera::AppStrategy;
-    config::dirs().ok().map(|d| d.config_dir().join("downloads_policy.txt"))
+    config::app_dirs().ok().map(|d| d.config_dir().join("downloads_policy.txt"))
 }
 
 pub fn can_download(url: &str, policy: DownloadsPolicy) -> bool {

@@ -1,0 +1,50 @@
+version: 4
+parser:
+  tarball:
+    name: html
+    sha256hex: 81c1cb452d7dd06946df11bec7056d4404cec0f6072c1927e66da048750ae10e
+    subdirectory: src
+    url: https://github.com/tree-sitter/tree-sitter-html/releases/download/v0.23.2/tree-sitter-html.tar.xz
+definition_query: |
+  (element (start_tag (tag_name) @tagname) (text) @name (#match? @tagname "^h[1-6]$")) @def
+  (element
+    [ (start_tag (attribute
+        (attribute_name) @attrib
+          [ (attribute_value) @name
+            (quoted_attribute_value (attribute_value) @name) ]))
+      (self_closing_tag (attribute
+        (attribute_name) @attrib
+          [ (attribute_value) @name
+            (quoted_attribute_value (attribute_value) @name) ])) ]
+    (#match? @attrib "^(name|id)$")) @def
+  (script_element
+    [ (start_tag (attribute
+        (attribute_name) @attrib
+          [ (attribute_value) @name
+            (quoted_attribute_value (attribute_value) @name) ]))
+      (self_closing_tag (attribute
+        (attribute_name) @attrib
+          [ (attribute_value) @name
+            (quoted_attribute_value (attribute_value) @name) ])) ]
+    (#match? @attrib "^(name|id)$")) @def
+  (style_element
+    [ (start_tag (attribute
+        (attribute_name) @attrib
+          [ (attribute_value) @name
+            (quoted_attribute_value (attribute_value) @name)]))
+      (self_closing_tag (attribute
+        (attribute_name) @attrib
+          [ (attribute_value) @name
+            (quoted_attribute_value (attribute_value) @name)]))]
+    (#match? @attrib "^(name|id)$")) @def
+parent_query: |
+  (element [(element) (text)] @exclude) @def
+  (script_element (raw_text) @exclude) @def
+  (style_element (raw_text) @exclude) @def
+injection_query: |
+  (script_element
+    (raw_text) @injection.content
+    (#set! injection.language "JavaScript"))
+  (style_element
+    (raw_text) @injection.content
+    (#set! injection.language "CSS"))

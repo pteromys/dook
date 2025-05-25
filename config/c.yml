@@ -1,0 +1,43 @@
+version: 4
+parser:
+  tarball:
+    name: c
+    sha256hex: e29869ab7ffa2464c938060ebc5b5d2701d2306889e8e4c1fbddb682350f1973
+    subdirectory: src
+    url: https://github.com/tree-sitter/tree-sitter-c/releases/download/v0.23.5/tree-sitter-c.tar.gz
+definition_query: |
+  [
+    (preproc_def name: (_) @name)
+    (preproc_function_def name: (_) @name)
+    (preproc_call directive: (preproc_directive) @undef (#match? @undef "#\\s*undef") argument: (_) @name)
+    (struct_specifier name: (_) @name body: (_))
+    (type_definition type: (struct_specifier name: (_) @name body: (_)))
+    (type_definition "typedef" type: (_) [
+      (type_identifier) @name
+      (pointer_declarator) @name
+      (pointer_declarator declarator: (_) @name)])
+    (field_declaration declarator: [
+      (_) @name
+      (pointer_declarator declarator: (_) @name)
+      (pointer_declarator declarator: (pointer_declarator declarator: (_) @name))
+      (pointer_declarator declarator: (pointer_declarator declarator: (pointer_declarator declarator: (_) @name)))
+      (pointer_declarator declarator: (pointer_declarator declarator: (pointer_declarator declarator: (pointer_declarator declarator: (_) @name))))])
+    (function_declarator declarator: (_) @name)
+    (function_definition [
+      (function_declarator declarator: (_) @name)
+      (pointer_declarator declarator: (function_declarator declarator: (_) @name))
+      (pointer_declarator declarator: (pointer_declarator declarator: (function_declarator declarator: (_) @name)))
+      (pointer_declarator declarator: (pointer_declarator declarator: (pointer_declarator declarator: (function_declarator declarator: (_) @name))))])
+    (_ declarator: [(identifier) (field_identifier) (type_identifier)] @name)
+    (assignment_expression left: [
+      (identifier) @name
+      (pointer_expression argument: (_) @name)
+      (pointer_expression argument: (pointer_expression argument: (_) @name))])
+  ] @def
+sibling_node_types:
+- comment
+parent_query: |
+  (type_definition type: (_) @exclude)
+  (function_declarator)
+  (function_definition body: (_) @exclude)
+  (struct_specifier body: (_) @exclude)

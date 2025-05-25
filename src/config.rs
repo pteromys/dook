@@ -1,14 +1,33 @@
-use crate::{LanguageName, MultiLineString};
+use crate::LanguageName;
 use crate::loader;
+use crate::multi_line_string::MultiLineString;
 
-const DEFAULT_CONFIG: &str = include_str!("dook.yml");
+pub static DEFAULT_CONFIG: phf::Map<&'static str, &'static str> = phf::phf_map! {
+    "C" => include_str!("../config/c.yml"),
+    "C++" => include_str!("../config/cxx.yml"),
+    "CSS" => include_str!("../config/css.yml"),
+    "Cython" => include_str!("../config/cython.yml"),
+    "GLSL" => include_str!("../config/glsl.yml"),
+    "Go" => include_str!("../config/go.yml"),
+    "HTML" => include_str!("../config/html.yml"),
+    "JavaScript" => include_str!("../config/javascript.yml"),
+    "Lua" => include_str!("../config/lua.yml"),
+    "Markdown" => include_str!("../config/markdown.yml"),
+    "Python" => include_str!("../config/python.yml"),
+    "Rust" => include_str!("../config/rust.yml"),
+    "Shell" => include_str!("../config/shell.yml"),
+    "TeX" => include_str!("../config/tex.yml"),
+    "TSX" => include_str!("../config/tsx.yml"),
+    "TypeScript" => include_str!("../config/typescript.yml"),
+    "YAML" => include_str!("../config/yaml.yml"),
+};
 
 pub fn default_config_path() -> Option<std::path::PathBuf> {
     use etcetera::AppStrategy;
-    dirs().map(|d| d.config_dir().join("dook.yml")).ok()
+    app_dirs().map(|d| d.config_dir()).ok()
 }
 
-pub fn dirs() -> Result<impl etcetera::AppStrategy, etcetera::HomeDirError> {
+pub fn app_dirs() -> Result<impl etcetera::AppStrategy, etcetera::HomeDirError> {
     etcetera::choose_app_strategy(etcetera::AppStrategyArgs {
         top_level_domain: "com".to_string(),
         author: "melonisland".to_string(),
@@ -33,20 +52,20 @@ merde::derive! {
 }
 
 #[derive(Debug, PartialEq)]
-struct ConfigV1(std::collections::HashMap<String, LanguageConfigV1>);
+struct MonolithicConfigV1(std::collections::HashMap<String, LanguageConfigV1>);
 
 merde::derive! {
-    impl (Deserialize) for struct ConfigV1 transparent
+    impl (Deserialize) for struct MonolithicConfigV1 transparent
 }
 
 #[derive(Debug, PartialEq)]
-struct ConfigV2 {
+struct MonolithicConfigV2 {
     version: u64,
     languages: std::collections::HashMap<String, LanguageConfigV1>,
 }
 
 #[derive(Debug, PartialEq, Default)]
-pub struct LanguageConfigV3 {
+struct LanguageConfigV3 {
     parser: Option<loader::ParserSource>,
     extends: Option<String>,
     definition_query: Option<String>,
@@ -62,23 +81,43 @@ merde::derive! {
 }
 
 #[derive(Debug, PartialEq)]
-struct ConfigV3 {
+struct MonolithicConfigV3 {
     version: u64,
     languages: std::collections::HashMap<String, LanguageConfigV3>,
 }
 
-merde::impl_into_static!(struct ConfigV3 { version, languages });
-
-fn join_strs(v: Vec<String>, sep: &str) -> String {
-    v.iter()
-        .flat_map(|s| [sep, s].into_iter())
-        .skip(1)
-        .collect()
+#[derive(Debug, PartialEq, Default)]
+pub struct LanguageConfigV4 {
+    pub version: u64,
+    pub parser: Option<loader::ParserSource>,
+    pub extends: Option<String>,
+    pub definition_query: Option<String>,
+    pub sibling_node_types: Option<std::vec::Vec<String>>,
+    pub parent_query: Option<String>,
+    pub recurse_query: Option<String>,
+    pub import_query: Option<String>,
+    pub injection_query: Option<String>,
 }
 
-impl From<ConfigV1> for ConfigV2 {
-    fn from(value: ConfigV1) -> Self {
-        let ConfigV1(language_map) = value;
+merde::derive! {
+    impl (Deserialize) for struct LanguageConfigV4 {
+        version,
+        parser,
+        extends,
+        definition_query,
+        sibling_node_types,
+        parent_query,
+        recurse_query,
+        import_query,
+        injection_query
+    }
+}
+
+pub use LanguageConfigV4 as LanguageConfig;
+
+impl From<MonolithicConfigV1> for MonolithicConfigV2 {
+    fn from(value: MonolithicConfigV1) -> Self {
+        let MonolithicConfigV1(language_map) = value;
         Self {
             version: 1,
             languages: language_map,
@@ -86,8 +125,8 @@ impl From<ConfigV1> for ConfigV2 {
     }
 }
 
-impl From<ConfigV2> for ConfigV3 {
-    fn from(value: ConfigV2) -> Self {
+impl From<MonolithicConfigV2> for MonolithicConfigV3 {
+    fn from(value: MonolithicConfigV2) -> Self {
         Self {
             version: value.version,
             languages: value
@@ -106,40 +145,60 @@ impl From<LanguageConfigV1> for LanguageConfigV3 {
             extends: None,
             definition_query: match value.match_patterns.len() {
                 0 => None,
-                _ => Some(join_strs(
-                    value.match_patterns.into_iter().map(|s| s.into()).collect(),
-                    "\n",
-                )),
+                _ => Some(value.match_patterns.into_iter().map(|s| s.into()).collect::<Vec<String>>().join("\n")),
             },
             sibling_node_types: Some(value.sibling_patterns),
             parent_query: match value.parent_patterns.len() {
                 0 => None,
-                _ => Some(join_strs(
-                    value
+                _ => Some(value
                         .parent_patterns
                         .iter()
                         .map(|node_name| format!("({})", node_name))
-                        .collect(),
-                    "\n",
-                )),
+                        .collect::<Vec<String>>().join("\n")),
             },
             recurse_query: value
                 .recurse_patterns
-                .map(|v| join_strs(v.into_iter().map(|s| s.into()).collect(), "\n")),
+                .map(|v| v.into_iter().map(|s| s.into()).collect::<Vec<String>>().join("\n")),
             import_query: value
                 .import_patterns
-                .map(|v| join_strs(v.into_iter().map(|s| s.into()).collect(), "\n")),
+                .map(|v| v.into_iter().map(|s| s.into()).collect::<Vec<String>>().join("\n")),
             injection_query: None,
         }
     }
 }
 
-impl<'de> merde::Deserialize<'de> for ConfigV2 {
+impl From<LanguageConfigV3> for LanguageConfigV4 {
+    fn from(value: LanguageConfigV3) -> Self {
+        let LanguageConfigV3 {
+            parser,
+            extends,
+            definition_query,
+            sibling_node_types,
+            parent_query,
+            recurse_query,
+            import_query,
+            injection_query,
+        } = value;
+        Self {
+            version: 4,
+            parser,
+            extends,
+            definition_query,
+            sibling_node_types,
+            parent_query,
+            recurse_query,
+            import_query,
+            injection_query
+        }
+    }
+}
+
+impl<'de> merde::Deserialize<'de> for MonolithicConfigV2 {
     async fn deserialize(
         de: &mut dyn merde::DynDeserializer<'de>,
     ) -> Result<Self, merde::MerdeError<'de>> {
         use merde::DynDeserializerExt;
-        let mut result = ConfigV2 {
+        let mut result = MonolithicConfigV2 {
             version: 2,
             languages: std::collections::HashMap::new(),
         };
@@ -167,12 +226,12 @@ impl<'de> merde::Deserialize<'de> for ConfigV2 {
     }
 }
 
-impl<'de> merde::Deserialize<'de> for ConfigV3 {
+impl<'de> merde::Deserialize<'de> for MonolithicConfigV3 {
     async fn deserialize(
         de: &mut dyn merde::DynDeserializer<'de>,
     ) -> Result<Self, merde::MerdeError<'de>> {
         use merde::DynDeserializerExt;
-        let mut result = ConfigV3 {
+        let mut result = MonolithicConfigV3 {
             version: 3,
             languages: std::collections::HashMap::new(),
         };
@@ -205,6 +264,18 @@ pub enum ConfigFormat {
     V1,
     V2,
     V3,
+    V4,
+}
+
+impl std::fmt::Display for ConfigFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::V1 => write!(f, "1"),
+            Self::V2 => write!(f, "2"),
+            Self::V3 => write!(f, "3"),
+            Self::V4 => write!(f, "4"),
+        }
+    }
 }
 
 impl<'de> merde::Deserialize<'de> for ConfigFormat {
@@ -220,6 +291,7 @@ impl<'de> merde::Deserialize<'de> for ConfigFormat {
                         return match de.next().await?.into_i64()? {
                             2 => Ok(ConfigFormat::V2),
                             3 => Ok(ConfigFormat::V3),
+                            4 => Ok(ConfigFormat::V4),
                             _ => Err(merde::MerdeError::OutOfRange),
                         };
                     }
@@ -236,17 +308,21 @@ impl<'de> merde::Deserialize<'de> for ConfigFormat {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Config {
+struct MonolithicConfig {
     version: ConfigFormat,
-    languages: std::collections::HashMap<LanguageName, LanguageConfigV3>,
+    languages: std::collections::HashMap<LanguageName, LanguageConfig>,
 }
 
 #[derive(Debug)]
 pub enum ConfigParseError {
     Deserialize(merde::MerdeError<'static>),
+    UnknownVersion(ConfigFormat),
     UnknownLanguage(String),
     NotUtf8(std::str::Utf8Error),
     UnreadableFile(std::io::Error),
+    HasFailedBefore(LanguageName),
+    ExtendsCycle(LanguageName),
+    ExtendsUnknownLanguage(LanguageName, String),
 }
 
 impl From<merde::MerdeError<'_>> for ConfigParseError {
@@ -268,30 +344,38 @@ impl std::fmt::Display for ConfigParseError {
         match self {
             Self::Deserialize(e)
                 => write!(f, "{}", e),
+            Self::UnknownVersion(version)
+                => write!(f, "unknown version: {}", version),
             Self::UnknownLanguage(language)
                 => write!(f, "unknown language: {}", language),
             Self::NotUtf8(e)
                 => write!(f, "{}", e),
             Self::UnreadableFile(e)
                 => write!(f, "{}", e),
+            Self::HasFailedBefore(language_name)
+                => write!(f, "failed to load {} config earlier", language_name),
+            Self::ExtendsCycle(language_name)
+                => write!(f, "\"extends\" field in {} config points into a cycle", language_name),
+            Self::ExtendsUnknownLanguage(language_name, extends)
+                => write!(f, "{language_name} extends unknown language {extends:#?}"),
         }
     }
 }
 
-impl TryFrom<ConfigV3> for Config {
+impl TryFrom<MonolithicConfigV3> for MonolithicConfig {
     type Error = ConfigParseError;
-    fn try_from(value: ConfigV3) -> Result<Self, Self::Error> {
+    fn try_from(value: MonolithicConfigV3) -> Result<Self, Self::Error> {
         use std::str::FromStr;
-        let mut languages: std::collections::HashMap<LanguageName, LanguageConfigV3> =
+        let mut languages: std::collections::HashMap<LanguageName, LanguageConfig> =
             std::collections::HashMap::new();
         for (language_name, config) in value.languages {
             if let Ok(language_name) = LanguageName::from_str(language_name.as_ref()) {
-                languages.insert(language_name, config);
+                languages.insert(language_name, config.into());
                 continue;
             }
             if value.version <= 2 {
                 if let Ok(language_name) = LanguageName::from_legacy(language_name.as_ref()) {
-                    languages.insert(language_name, config);
+                    languages.insert(language_name, config.into());
                     continue;
                 }
             }
@@ -304,39 +388,11 @@ impl TryFrom<ConfigV3> for Config {
     }
 }
 
-impl Config {
-    /// Used by integration tests for limited access to private self.languages
-    #[allow(unused)]
-    pub fn configured_languages(&self) -> impl Iterator<Item = &LanguageName> {
-        self.languages.keys()
-    }
-
-    pub fn load(
-        explicit_path: &Option<impl AsRef<std::path::Path>>,
-    ) -> Result<Option<Self>, ConfigParseError> {
-        let config_bytes = match explicit_path {
-            // explicitly requested file paths expose any errors reading
-            Some(p) => std::fs::read(p.as_ref()).map_err(ConfigParseError::UnreadableFile)?,
-            // the default file path is more forgiving
-            None => match default_config_path() {
-                None => return Ok(None), // if there's no default path, just return None
-                Some(default_path) => match std::fs::read(&default_path) {
-                    // unwrap the contents if we successfully read it
-                    Ok(contents) => contents,
-                    Err(e) => {
-                        // silently eat NotFound---user never created config file
-                        // log other errors but don't let them stop us from trying to work in a degraded environment
-                        if e.kind() != std::io::ErrorKind::NotFound {
-                            log::warn!("Error reading config at {:?}, falling back to built-in default: {:?}", default_path, e);
-                        }
-                        return Ok(None);
-                    }
-                },
-            },
-        };
+impl MonolithicConfig {
+    fn load(path: impl AsRef<std::path::Path>) -> Result<Self, ConfigParseError> {
+        let config_bytes = std::fs::read(path.as_ref()).map_err(ConfigParseError::UnreadableFile)?;
         let config_str = std::str::from_utf8(&config_bytes)?;
-        let deserialize_result = Self::load_from_str(config_str);
-        deserialize_result.map(Some)
+        Self::load_from_str(config_str)
     }
 
     fn load_from_str(config_str: &str) -> Result<Self, ConfigParseError> {
@@ -345,69 +401,23 @@ impl Config {
         // second pass depending on version
         let v3 = match config_format {
             ConfigFormat::V1 => {
-                let v1 = merde::yaml::from_str::<ConfigV1>(config_str)?;
-                let v2: ConfigV2 = v1.into();
+                let v1 = merde::yaml::from_str::<MonolithicConfigV1>(config_str)?;
+                let v2: MonolithicConfigV2 = v1.into();
                 v2.into()
             }
             ConfigFormat::V2 => {
-                let v2 = merde::yaml::from_str::<ConfigV2>(config_str)?;
+                let v2 = merde::yaml::from_str::<MonolithicConfigV2>(config_str)?;
                 v2.into()
             }
-            ConfigFormat::V3 => merde::yaml::from_str::<ConfigV3>(config_str)?,
+            ConfigFormat::V3 => merde::yaml::from_str::<MonolithicConfigV3>(config_str)?,
+            x => return Err(ConfigParseError::UnknownVersion(x)),
         };
         v3.try_into()
     }
-
-    pub fn load_default() -> Self {
-        let mut result = Self::load_from_str(DEFAULT_CONFIG)
-            .expect("default_patterns_are_loadable test should have caught this");
-        if cfg!(feature = "static_python") {
-            result
-                .languages
-                .get_mut(&LanguageName::PYTHON)
-                .expect("default_patterns_are_loadable test should have caught this")
-                .parser = Some(loader::ParserSource::Static("Python".to_string()));
-        }
-        result
-    }
-
-    pub fn merge(mut self, overrides: Self) -> Self {
-        for (language_name, language_config) in overrides.languages {
-            match self.languages.entry(language_name) {
-                std::collections::hash_map::Entry::Vacant(e) => e.insert(language_config),
-                std::collections::hash_map::Entry::Occupied(mut e) => {
-                    let dest_config = e.get_mut();
-                    if let Some(parser) = language_config.parser {
-                        dest_config.parser = Some(parser.clone());
-                    }
-                    if let Some(x) = language_config.definition_query {
-                        dest_config.definition_query = Some(x.clone());
-                    }
-                    if let Some(x) = language_config.sibling_node_types {
-                        dest_config.sibling_node_types = Some(x.clone());
-                    }
-                    if let Some(x) = language_config.parent_query {
-                        dest_config.parent_query = Some(x.clone());
-                    }
-                    if let Some(x) = language_config.recurse_query {
-                        dest_config.recurse_query = Some(x.clone());
-                    }
-                    if let Some(x) = language_config.import_query {
-                        dest_config.import_query = Some(x.clone());
-                    }
-                    if let Some(x) = language_config.injection_query {
-                        dest_config.injection_query = Some(x.clone());
-                    }
-                    dest_config
-                }
-            };
-        }
-        self
-    }
 }
 
-impl LanguageConfigV3 {
-    pub fn rebase(&mut self, base: &LanguageConfigV3) {
+impl LanguageConfig {
+    fn rebase(&mut self, base: &LanguageConfig) {
         fn combine_queries(base: Option<&String>, extension: Option<String>) -> Option<String> {
             let (is_concat, extension) = match extension.as_ref() {
                 None => (true, None),
@@ -465,382 +475,169 @@ impl LanguageConfigV3 {
         self.injection_query =
             combine_queries(base.injection_query.as_ref(), self.injection_query.take());
     }
-}
 
-pub struct QueryCompiler {
-    config: Config,
-    language_loader: loader::Loader,
-    cache: std::collections::HashMap<LanguageName, Option<std::rc::Rc<LanguageInfo>>>,
-}
-
-#[derive(Debug)]
-pub enum QueryCompilerError {
-    HasFailedBefore(LanguageName),
-    GetLanguageInfoError(LanguageName, GetLanguageInfoError),
-}
-
-#[derive(Debug)]
-pub enum GetLanguageInfoError {
-    LanguageIsNotInConfig(LanguageName),
-    ParserNotConfigured,
-    LoaderError(loader::LoaderError),
-    ExtendsUnknownLanguage(LanguageName, String),
-    QueryCompileFailed {
-        query_source: String,
-        query_error: tree_sitter::QueryError,
-    },
-    UnrecognizedNodeType(String),
-    RequiredCaptureMissing {
-        query_source: String,
-        capture_name: &'static str,
-        config_field: &'static str,
-    },
-    DefinitionQueryMissing,
-}
-
-#[rustfmt::skip] // keep compact
-impl std::fmt::Display for QueryCompilerError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::HasFailedBefore(language_name)
-                => write!(f, "skipping due to previous error for language {language_name}"),
-            Self::GetLanguageInfoError(language_name, e)
-                => write!(f, "in {language_name}: {e}"),
+    fn replace(&mut self, replacements: LanguageConfig) -> &Self {
+        if let Some(parser) = replacements.parser {
+            self.parser = Some(parser.clone());
         }
+        if let Some(x) = replacements.definition_query {
+            self.definition_query = Some(x.clone());
+        }
+        if let Some(x) = replacements.sibling_node_types {
+            self.sibling_node_types = Some(x.clone());
+        }
+        if let Some(x) = replacements.parent_query {
+            self.parent_query = Some(x.clone());
+        }
+        if let Some(x) = replacements.recurse_query {
+            self.recurse_query = Some(x.clone());
+        }
+        if let Some(x) = replacements.import_query {
+            self.import_query = Some(x.clone());
+        }
+        if let Some(x) = replacements.injection_query {
+            self.injection_query = Some(x.clone());
+        }
+        self
     }
 }
 
-#[rustfmt::skip] // keep compact
-impl std::fmt::Display for GetLanguageInfoError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::LanguageIsNotInConfig(language_name)
-                => write!(f, "language {language_name} not found in any config"),
-            Self::ParserNotConfigured
-                => write!(f, "no parser configured for language or any of its ancestors"),
-            Self::LoaderError(e)
-                => write!(f, "failed to load parser: {e}"),
-            Self::ExtendsUnknownLanguage(language_name, extends)
-                => write!(f, "{language_name} extends unknown language {extends:#?}"),
-            Self::QueryCompileFailed { query_source, query_error }
-                => write!(f, "cannot compile query {:?}: {}", query_source, query_error),
-            Self::UnrecognizedNodeType(node_type)
-                => write!(f, "{:?} is not a node type the parser recognizes", node_type),
-            Self::RequiredCaptureMissing { query_source, capture_name, config_field }
-                => write!(f, "{} requires capturing @{} not found in {:?}",
-                          config_field, capture_name, query_source),
-            Self::DefinitionQueryMissing
-                => write!(f, "no config defines definition_query for this language"),
-        }
-    }
+pub struct ConfigLoader {
+    config_dir: Option<std::path::PathBuf>,
+    cache: std::collections::HashMap<LanguageName, ConfigCacheEntry>,
+    files: Option<std::collections::HashMap<LanguageName, std::path::PathBuf>>,
+    monolithic_config: Option<MonolithicConfig>,
 }
 
-impl QueryCompiler {
-    pub fn new(config: Config, language_loader: loader::Loader) -> Self {
+enum ConfigCacheEntry {
+    HasFailedBefore,
+    InProgress,
+    Loaded(std::rc::Rc<LanguageConfig>),
+}
+
+impl ConfigLoader {
+    pub fn new(config_dir: Option<std::path::PathBuf>) -> Self {
         Self {
-            config,
-            language_loader,
-            cache: std::collections::HashMap::new(),
+            config_dir,
+            cache: Default::default(),
+            files: None,
+            monolithic_config: None,
         }
     }
 
-    pub fn get_language_info(
+    fn get_path_to_config(
         &mut self,
         language_name: LanguageName,
-    ) -> Result<std::rc::Rc<LanguageInfo>, QueryCompilerError> {
+    ) -> Option<std::path::PathBuf> {
         use std::str::FromStr;
-        let parent_language = match self.cache.entry(language_name) {
-            std::collections::hash_map::Entry::Occupied(entry) => {
-                return entry
-                    .get()
-                    .clone()
-                    .ok_or(QueryCompilerError::HasFailedBefore(language_name))
-            }
-            std::collections::hash_map::Entry::Vacant(entry) => {
-                match get_language_info_uncached(
-                    language_name,
-                    &self.config,
-                    &mut self.language_loader,
-                ) {
-                    Ok(x) => {
-                        let result = std::rc::Rc::new(x);
-                        entry.insert(Some(result.clone()));
-                        return Ok(result);
-                    }
-                    Err(e) => {
-                        let parent = hyperpolyglot::Language::try_from(language_name.as_ref())
-                            .ok()
-                            .and_then(|lang_hy| lang_hy.group)
-                            .and_then(|group| LanguageName::from_str(group).ok());
-                        let Some(parent) = parent else {
-                            entry.insert(None);
-                            return Err(QueryCompilerError::GetLanguageInfoError(language_name, e));
-                        };
-                        log::warn!(
-                            "failed to load {language_name} so falling back to {parent}: {e}"
-                        );
-                        parent
-                    }
-                }
+        if let Some(files) = self.files.as_ref() {
+            return files.get(&language_name).cloned();
+        }
+        let files = self.files.insert(Default::default());
+        let dir_entries = match std::fs::read_dir(self.config_dir.as_ref()?) {
+            Ok(d) => d,
+            Err(e) => {
+                log::error!("{}", e);
+                return None;
             }
         };
-        match self.get_language_info(parent_language) {
+        for entry in dir_entries {
+            let path = match entry {
+                Err(e) => {
+                    log::error!("{}", e);
+                    continue;
+                }
+                Ok(e) => e.path(),
+            };
+            if path.file_name() == Some(std::ffi::OsStr::new("dook.yml")) || path.file_name() == Some(std::ffi::OsStr::new("dook.json")) {
+                log::warn!("parsing legacy monolithic config at {path:#?}");
+                match MonolithicConfig::load(path) {
+                    Ok(config) => { self.monolithic_config = Some(config); }
+                    Err(e) => { log::error!("{}", e); }
+                }
+                continue;
+            }
+            if path.extension() != Some(std::ffi::OsStr::new("yml")) { continue; }
+            let Some(file_stem) = path.file_stem() else { continue; };
+            let Some(name) = file_stem.to_str() else { continue; };
+            if let Ok(language_name) = LanguageName::from_str(name) {
+                if let Some(replaced) = files.insert(language_name, path.clone()) {
+                    log::error!("multiple configs found for {language_name}: {replaced:#?}, {path:#?}");
+                }
+            }
+        }
+        files.get(&language_name).cloned()
+    }
+
+    pub fn load_config(
+        &mut self,
+        language_name: LanguageName,
+    ) -> Result<std::rc::Rc<LanguageConfig>, ConfigParseError> {
+        match self.cache.entry(language_name) {
+            std::collections::hash_map::Entry::Occupied(entry) => {
+                return match entry.get() {
+                    ConfigCacheEntry::HasFailedBefore => Err(ConfigParseError::HasFailedBefore(language_name)),
+                    ConfigCacheEntry::InProgress => Err(ConfigParseError::ExtendsCycle(language_name)),
+                    ConfigCacheEntry::Loaded(config) => Ok(config.clone()),
+                };
+            }
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(ConfigCacheEntry::InProgress);
+            }
+        }
+        match self.load_config_uncached(language_name) {
             Ok(result) => {
-                self.cache.insert(language_name, Some(result.clone()));
+                let result = std::rc::Rc::new(result);
+                self.cache.insert(language_name, ConfigCacheEntry::Loaded(result.clone()));
                 Ok(result)
             }
             Err(e) => {
-                self.cache.insert(language_name, None);
+                self.cache.insert(language_name, ConfigCacheEntry::HasFailedBefore);
                 Err(e)
             }
         }
     }
-}
 
-fn get_language_info_uncached(
-    language_name: LanguageName,
-    config: &Config,
-    language_loader: &mut loader::Loader,
-) -> Result<LanguageInfo, GetLanguageInfoError> {
-    let mut language_config = LanguageConfigV3 {
-        extends: Some(language_name.to_string()),
-        ..Default::default()
-    };
-    while let Some(extends) = language_config.extends.as_ref() {
-        use std::str::FromStr;
-        let base_language = LanguageName::from_str(extends).map_err(|_| {
-            GetLanguageInfoError::ExtendsUnknownLanguage(language_name, extends.to_owned())
-        })?;
-        let base_config = config
-            .languages
-            .get(&base_language)
-            .ok_or(GetLanguageInfoError::LanguageIsNotInConfig(base_language))?;
-        language_config.rebase(base_config);
-    }
-    let parser_source = language_config
-        .parser
-        .as_ref()
-        .ok_or(GetLanguageInfoError::ParserNotConfigured)?;
-    let language = language_loader
-        .get_language(parser_source)
-        .map_err(GetLanguageInfoError::LoaderError)?;
-    LanguageInfo::new(language, language_name, &language_config)
-}
-
-pub struct LanguageInfo {
-    pub language: tree_sitter::Language,
-    pub definition_query: DefinitionQuery,
-    pub sibling_node_types: std::vec::Vec<std::num::NonZero<u16>>,
-    pub parent_query: Option<ParentQuery>,
-    pub recurse_query: Option<RecurseQuery>,
-    pub import_query: Option<ImportQuery>,
-    pub injection_query: Option<InjectionQuery>,
-    // stuff not exposed to config because it's too special-cased or churning
-    pub name_transform: Option<Box<NameTransform>>,
-}
-
-pub type NameTransform = dyn Fn(&str) -> &str;
-
-pub struct DefinitionQuery {
-    pub query: tree_sitter::Query,
-    pub index_name: u32,
-    pub index_def: u32,
-}
-
-pub struct ParentQuery {
-    pub query: tree_sitter::Query,
-    pub index_exclude: Option<u32>,
-}
-
-pub struct RecurseQuery {
-    pub query: tree_sitter::Query,
-    pub index_name: u32,
-}
-
-pub struct ImportQuery {
-    pub query: tree_sitter::Query,
-    pub index_name: u32,
-    pub index_origin: u32,
-}
-
-pub struct InjectionQuery {
-    pub query: tree_sitter::Query,
-    pub index_range: u32,
-    pub language_hints_by_pattern_index: Vec<InjectionLanguageHint>,
-}
-
-#[derive(Clone)]
-pub enum InjectionLanguageHint {
-    Absent,
-    Fixed(String),
-    Capture(usize),
-}
-
-impl LanguageInfo {
-    pub fn new(
-        language: tree_sitter::Language,
+    fn load_config_uncached(
+        &mut self,
         language_name: LanguageName,
-        config: &LanguageConfigV3,
-    ) -> Result<Self, GetLanguageInfoError> {
-        fn compile_query(
-            language: &tree_sitter::Language,
-            query_source: &str,
-        ) -> Result<tree_sitter::Query, GetLanguageInfoError> {
-            tree_sitter::Query::new(language, query_source).map_err(|e| {
-                GetLanguageInfoError::QueryCompileFailed {
-                    query_source: query_source.to_owned(),
-                    query_error: e,
-                }
-            })
-        }
-        fn get_capture_index(
-            query: &tree_sitter::Query,
-            capture_name: &'static str,
-            query_source: &str,
-            config_field: &'static str,
-        ) -> Result<u32, GetLanguageInfoError> {
-            query.capture_index_for_name(capture_name).ok_or_else(|| {
-                GetLanguageInfoError::RequiredCaptureMissing {
-                    query_source: query_source.to_owned(),
-                    capture_name,
-                    config_field,
-                }
-            })
-        }
-        fn resolve_node_types<Item: AsRef<str>, II: IntoIterator<Item = Item>>(
-            language: &tree_sitter::Language,
-            node_type_names: II,
-        ) -> Result<std::vec::Vec<std::num::NonZero<u16>>, GetLanguageInfoError> {
-            node_type_names
-                .into_iter()
-                .map(|node_type_name| {
-                    std::num::NonZero::new(language.id_for_node_kind(node_type_name.as_ref(), true))
-                        .ok_or_else(|| {
-                            GetLanguageInfoError::UnrecognizedNodeType(
-                                node_type_name.as_ref().to_owned(),
-                            )
-                        })
-                })
-                .collect()
-        }
-        let definition_query = match &config.definition_query {
-            None => Err(GetLanguageInfoError::DefinitionQueryMissing)?,
-            Some(query_source) => {
-                let query = compile_query(&language, query_source.as_ref())?;
-                DefinitionQuery {
-                    index_name: get_capture_index(
-                        &query,
-                        "name",
-                        query_source.as_ref(),
-                        "definition_query",
-                    )?,
-                    index_def: get_capture_index(
-                        &query,
-                        "def",
-                        query_source.as_ref(),
-                        "definition_query",
-                    )?,
-                    query,
-                }
-            }
-        };
-        let parent_query = match &config.parent_query {
+    ) -> Result<LanguageConfig, ConfigParseError> {
+        use std::str::FromStr;
+        let default_config = match DEFAULT_CONFIG.get(language_name.as_ref()) {
+            Some(c) => Some(merde::yaml::from_str::<LanguageConfigV4>(c)?),
             None => None,
-            Some(query_source) => {
-                let query = compile_query(&language, query_source.as_ref())?;
-                Some(ParentQuery {
-                    index_exclude: query.capture_index_for_name("exclude"),
-                    query,
-                })
-            }
         };
-        let recurse_query = match &config.recurse_query {
-            None => None,
-            Some(query_source) => {
-                let query = compile_query(&language, query_source.as_ref())?;
-                Some(RecurseQuery {
-                    index_name: get_capture_index(
-                        &query,
-                        "name",
-                        query_source.as_ref(),
-                        "recurse_query",
-                    )?,
-                    query,
-                })
-            }
-        };
-        let import_query = match &config.import_query {
-            None => None,
-            Some(query_source) => {
-                let query = compile_query(&language, query_source.as_ref())?;
-                Some(ImportQuery {
-                    index_name: get_capture_index(
-                        &query,
-                        "name",
-                        query_source.as_ref(),
-                        "import_query",
-                    )?,
-                    index_origin: get_capture_index(
-                        &query,
-                        "origin",
-                        query_source.as_ref(),
-                        "import_query",
-                    )?,
-                    query,
-                })
-            }
-        };
-        let injection_query = match &config.injection_query {
-            None => None,
-            Some(query_source) => {
-                let query = compile_query(&language, query_source.as_ref())?;
-                let mut language_hints_by_pattern_index: Vec<InjectionLanguageHint> =
-                    vec![InjectionLanguageHint::Absent; query.pattern_count()];
-                for (pattern_index, language_hint) in language_hints_by_pattern_index
-                    .iter_mut()
-                    .enumerate()
-                    .take(query.pattern_count())
-                {
-                    for prop in query.property_settings(pattern_index) {
-                        if &*prop.key == "injection.language" {
-                            if let Some(value) = prop.value.as_ref() {
-                                *language_hint = InjectionLanguageHint::Fixed((*value).to_string());
-                            }
-                            if let Some(capture_index) = prop.capture_id {
-                                *language_hint = InjectionLanguageHint::Capture(capture_index);
-                            }
-                        }
-                    }
-                }
-                Some(InjectionQuery {
-                    index_range: get_capture_index(
-                        &query,
-                        "injection.content",
-                        query_source.as_ref(),
-                        "injection_query",
-                    )?,
-                    language_hints_by_pattern_index,
-                    query,
-                })
-            }
-        };
-        Ok(Self {
-            definition_query,
-            sibling_node_types: match &config.sibling_node_types {
-                None => vec![],
-                Some(v) => resolve_node_types(&language, v)?,
+        let user_config = match self.get_path_to_config(language_name) {
+            Some(path) => {
+                let config_bytes = std::fs::read(path).map_err(ConfigParseError::UnreadableFile)?;
+                let config_str = std::str::from_utf8(&config_bytes)?;
+                Some(merde::yaml::from_str::<LanguageConfigV4>(config_str)?)
             },
-            parent_query,
-            recurse_query,
-            import_query,
-            injection_query,
-            language,
-            name_transform: match language_name {
-                LanguageName::TEX => Some(Box::new(|n| n.trim_start_matches("\\"))),
-                LanguageName::YAML => Some(Box::new(|n| n.trim_matches(['\'', '"']))),
-                _ => None,
-            },
-        })
+            None => self.monolithic_config.as_mut().and_then(|c| c.languages.remove(&language_name)),
+        };
+        let mut merged_config = match default_config {
+            Some(mut default_config) => {
+                if cfg!(feature = "static_python") && language_name == LanguageName::PYTHON {
+                    default_config.parser = Some(loader::ParserSource::Static("Python".to_string()));
+                }
+                if let Some(user_config) = user_config {
+                    default_config.replace(user_config);
+                }
+                default_config
+            }
+            None => match user_config {
+                Some(user_config) => user_config,
+                None => { return Err(ConfigParseError::HasFailedBefore(language_name)); }
+            }
+        };
+        if let Some(extends) = merged_config.extends.as_ref() {
+            let base_language = LanguageName::from_str(extends).map_err(|_| {
+                ConfigParseError::ExtendsUnknownLanguage(language_name, extends.to_owned())
+            })?;
+            let base_config = self.load_config(base_language)?;
+            merged_config.rebase(&base_config);
+        }
+        Ok(merged_config)
     }
 }
 
@@ -850,7 +647,7 @@ mod tests {
 
     #[test]
     fn v1_vs_v2() {
-        let v1 = Config::load_from_str(
+        let v1 = MonolithicConfig::load_from_str(
             r#"{"python": {
             "match_patterns": [],
             "sibling_patterns": [],
@@ -859,7 +656,7 @@ mod tests {
         }}"#,
         )
         .unwrap();
-        let v2 = Config::load_from_str(
+        let v2 = MonolithicConfig::load_from_str(
             r#"{
             "_version": 2,
             "python": {
@@ -876,7 +673,7 @@ mod tests {
 
     #[test]
     fn v2_vs_v3() {
-        let v2 = Config::load_from_str(
+        let v2 = MonolithicConfig::load_from_str(
             r#"{
             "_version": 2,
             "pYtHOn": {
@@ -888,7 +685,7 @@ mod tests {
         }"#,
         )
         .unwrap();
-        let v3 = Config::load_from_str(
+        let v3 = MonolithicConfig::load_from_str(
             r#"{
             "_version": 3,
             "Python": {

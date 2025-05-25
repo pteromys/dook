@@ -1,11 +1,11 @@
-use dook::config;
-use dook::downloads_policy;
-use dook::downloads_policy::{get_downloads_policy, DownloadsPolicy};
 use dook::inputs;
 use dook::main_search;
 use dook::searches;
+use dook::{app_dirs, default_config_path};
+use dook::{downloads_policy_path, get_downloads_policy, DownloadsPolicy};
 use dook::{
-    Config, ConfigParseError, LanguageName, Loader, LoaderError, QueryCompiler, QueryCompilerError,
+    ConfigLoader, ConfigParseError, LanguageName, Loader, LoaderError, QueryCompiler,
+    QueryCompilerError,
 };
 use enum_derive_2018::EnumFromInner;
 use etcetera::AppStrategy;
@@ -39,12 +39,12 @@ struct Cli {
     /// Regex to match against symbol names. Required unless using --dump.
     pattern: Option<String>,
 
-    /// Config file path (default: ~/.config/dook/dook.yml)
+    /// Config directory (default: ~/.config/dook)
     #[arg(
         short,
         long,
         required = false,
-        help = format!("Config file path (default: {})", match config::default_config_path() {
+        help = format!("Config directory (default: {})", match default_config_path() {
             None => String::from("unset"),
             Some(p) => format!("{:?}", p),
         })
@@ -59,7 +59,7 @@ struct Cli {
 
     #[arg(
         long,
-        help = format!("Use only the parsers already downloaded to {:?} {}", match config::dirs() {
+        help = format!("Use only the parsers already downloaded to {:?} {}", match app_dirs() {
             Ok(d) => d.cache_dir().join("sources"),
             Err(_) => std::path::PathBuf::new(),
         }, "(alias for --download=no)")
@@ -87,7 +87,7 @@ struct Cli {
         help = format!(
             "What to do if we need to download a parser (default: {} from {})",
             get_downloads_policy(),
-            match downloads_policy::settings_path() {
+            match downloads_policy_path() {
                 None => "built-in".to_string(),
                 Some(path) => format!("{path:?}"),
             })
@@ -257,16 +257,11 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
     }
     logger_builder.init();
 
-    // load config
-    let custom_config = Config::load(&cli.config)?;
-    let default_config = Config::load_default();
-    let merged_config = match custom_config {
-        None => default_config,
-        Some(custom_config) => default_config.merge(custom_config),
-    };
-    let parser_src_path = config::dirs()?.cache_dir().join("sources");
+    // set up caches
+    let config_loader = ConfigLoader::new(cli.config.clone().or_else(default_config_path));
+    let parser_src_path = app_dirs()?.cache_dir().join("sources");
     let language_loader = Loader::new(parser_src_path, None, downloads_policy)?;
-    let mut query_compiler = QueryCompiler::new(merged_config, language_loader);
+    let mut query_compiler = QueryCompiler::new(config_loader, language_loader);
 
     // check for dump-parse mode
     if let Some(dump_target) = cli.dump {
@@ -489,7 +484,7 @@ fn maybe_warn_paging_vs_downloads_policy(enable_paging: bool, downloads_policy: 
             "Paging was disabled so we could ask to download new parsers if the need arose.",
             " To enable paging, use --download=yes or --download=no.",
         );
-        if let Some(settings_path) = downloads_policy::settings_path() {
+        if let Some(settings_path) = downloads_policy_path() {
             log::warn!("Or write YES or NO to {settings_path:#?}");
         }
     }

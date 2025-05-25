@@ -1,4 +1,4 @@
-use crate::MultiLineString;
+use crate::multi_line_string::MultiLineString;
 
 struct Notebook {
     cells: Vec<Cell>,

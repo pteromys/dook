@@ -1,0 +1,14 @@
+version: 4
+parser:
+  tarball:
+    name: yaml
+    sha256hex: 7888ddd229349ad9648f038c29e52e900086bc0af54b5448afd3668319990298
+    subdirectory: src
+    url: https://github.com/tree-sitter-grammars/tree-sitter-yaml/releases/download/v0.7.0/tree-sitter-yaml.tar.xz
+definition_query: |
+  (anchor (anchor_name) @name) @def
+  (block_mapping_pair key: (_) @name) @def
+  (flow_pair key: (flow_node
+    [ (single_quote_scalar) @name
+      (double_quote_scalar) @name
+      (plain_scalar (string_scalar) @name) ])) @def

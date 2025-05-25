@@ -1,0 +1,61 @@
+version: 4
+parser:
+  tarball:
+    name: python
+    sha256hex: bc7c1c922b14cb0edd75c0400a63ff260e09bd02684351ed5d38586b5771cd69
+    subdirectory: src
+    url: https://github.com/tree-sitter/tree-sitter-python/releases/download/v0.23.6/tree-sitter-python.tar.xz
+definition_query: |
+  [
+    (class_definition name: (_) @name)
+    (function_definition name: (_) @name)
+    (decorated_definition
+      [ (class_definition name: (_) @name)
+        (function_definition name: (_) @name) ])
+    (assignment left:
+      [ (_) @name
+        (attribute attribute: (_) @name)
+        (subscript subscript: (string (string_content) @name))
+        (pattern_list (identifier) @name) ])
+    (global_statement (identifier) @name)
+    (nonlocal_statement (identifier) @name)
+    (type_alias_statement left: (_) @name)
+    (aliased_import alias: (identifier) @name)
+    (as_pattern_target (identifier) @name)
+  ] @def
+  (dictionary (pair key: (string (string_content) @name)) @def)
+  (parameters (identifier) @name @def)
+  (lambda_parameters (identifier) @name @def)
+  (typed_parameter . (identifier) @name) @def
+  (default_parameter name: (_) @name) @def
+  (typed_default_parameter name: (_) @name) @def
+  (for_statement left:
+    [ (_) @name
+      (pattern_list (identifier) @name)
+    ] @def)
+  (for_statement left:
+    [ (_) @name
+      (pattern_list (identifier) @name)
+    ] right: (_) @def)
+  (for_in_clause left:
+    [ (_) @name
+      (pattern_list (identifier) @name) ]) @def
+  (call function: (identifier) @f (#eq? @f "setattr") arguments: (argument_list ("(" (_) "," (string (string_content) @name)))) @def
+  (call function: (attribute attribute: (identifier) @f (#any-of? @f "__setattr__" "__setitem__")) arguments: (argument_list ((string (string_content) @name) "," (_) ")"))) @def
+sibling_node_types:
+- decorator
+- comment
+parent_query: |
+  (class_definition body: (_) @exclude)
+  (function_definition body: (_) @exclude)
+  (assignment right: (_) @exclude)
+  (import_from_statement)
+  (with_statement body: (_) @exclude)
+  (for_statement body: (_) @exclude)
+recurse_query: |
+  (call function: [
+    (identifier) @name
+    (attribute attribute: (identifier) @name)])
+import_query: |
+  (import_from_statement module_name: (_) @origin name: (_) @name)
+  (attribute object: (_) @origin attribute: (identifier) @name)

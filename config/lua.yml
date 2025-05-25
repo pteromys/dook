@@ -1,0 +1,20 @@
+version: 4
+parser:
+  tarball:
+    name: lua
+    sha256hex: a34cc70abfd8d2d4b0fabf01403ea05f848e1a4bc37d8a4bfea7164657b35d31
+    subdirectory: tree-sitter-lua-0.3.0/src
+    url: https://github.com/tree-sitter-grammars/tree-sitter-lua/archive/refs/tags/v0.3.0.tar.gz
+definition_query: |
+  (function_declaration name: (_) @name) @def
+  (variable_declaration (variable_list name: (_) @name)) @def
+  (assignment_statement (variable_list name: (_) @name)) @def
+  (for_generic_clause (variable_list name: (_) @name)) @def
+  (for_numeric_clause name: (_) @name) @def
+  (field name: (identifier) @name) @def
+  (parameters name: (identifier) @name) @def
+  (label_statement (identifier) @name) @def
+parent_query: |
+  (function_declaration body: (_) @exclude)
+  (for_statement body: (_) @exclude)
+  (table_constructor (field) @exclude)

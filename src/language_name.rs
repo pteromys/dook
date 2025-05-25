@@ -3,6 +3,7 @@ use crate::language_aliases::LANGUAGE_CANONICAL_NAMES;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LanguageName(&'static str);
 
+#[derive(Debug, Clone, Copy)]
 pub struct UnknownLanguageError {}
 
 impl LanguageName {

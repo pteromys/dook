@@ -1,0 +1,15 @@
+version: 4
+parser:
+  tarball:
+    name: bash
+    sha256hex: eee002228ad5194cf27f1d499e5967d11df9958b417abcd0ba6b6be55042910c
+    subdirectory: src
+    url: https://github.com/tree-sitter/tree-sitter-bash/releases/download/v0.23.3/tree-sitter-bash.tar.xz
+definition_query: |
+  (function_definition name: (_) @name) @def
+  (variable_assignment name: (_) @name) @def
+  (declaration_command (variable_name) @name) @def
+  (for_statement variable: (_) @name @def)
+  (for_statement variable: (_) @name value: (_) @def)
+parent_query: |
+  (function_definition body: (_) @exclude)

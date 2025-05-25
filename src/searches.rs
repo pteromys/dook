@@ -1,5 +1,6 @@
-use crate::language_name::LanguageName;
-use crate::{config, range_union};
+use crate::LanguageName;
+use crate::query_compiler::LanguageInfo;
+use crate::{query_compiler, range_union};
 
 #[derive(Debug, Clone)]
 pub enum FileParseError {
@@ -82,7 +83,7 @@ pub fn end_point_to_end_line(p: tree_sitter::Point) -> usize {
     }
 }
 
-fn extract_name<'a>(bytes: &'a [u8], language_info: &config::LanguageInfo) -> &'a str {
+fn extract_name<'a>(bytes: &'a [u8], language_info: &LanguageInfo) -> &'a str {
     let full_name = std::str::from_utf8(bytes).unwrap();
     match language_info.name_transform.as_ref() {
         None => full_name,
@@ -93,7 +94,7 @@ fn extract_name<'a>(bytes: &'a [u8], language_info: &config::LanguageInfo) -> &'
 pub fn find_names(
     source_code: &[u8],
     tree: &tree_sitter::Tree,
-    language_info: &config::LanguageInfo,
+    language_info: &LanguageInfo,
     pattern: &regex::Regex,
 ) -> Vec<String> {
     use tree_sitter::StreamingIterator;
@@ -126,7 +127,7 @@ pub fn find_names(
 pub fn find_definition(
     source_code: &[u8],
     tree: &tree_sitter::Tree,
-    language_info: &config::LanguageInfo,
+    language_info: &LanguageInfo,
     pattern: &regex::Regex,
     recurse: bool,
 ) -> SearchResult {
@@ -262,7 +263,7 @@ pub fn find_definition(
 pub fn find_injections(
     source_code: &[u8],
     tree: &tree_sitter::Tree,
-    language_info: &config::LanguageInfo,
+    language_info: &LanguageInfo,
     pattern: &regex::Regex,
 ) -> Vec<InjectionRange> {
     use tree_sitter::StreamingIterator;
@@ -280,9 +281,9 @@ pub fn find_injections(
                     .get(pattern_index)
                 {
                     None => None,
-                    Some(config::InjectionLanguageHint::Absent) => None,
-                    Some(config::InjectionLanguageHint::Fixed(s)) => Some(s.as_ref()),
-                    Some(config::InjectionLanguageHint::Capture(capture_index)) => query_match
+                    Some(query_compiler::InjectionLanguageHint::Absent) => None,
+                    Some(query_compiler::InjectionLanguageHint::Fixed(s)) => Some(s.as_ref()),
+                    Some(query_compiler::InjectionLanguageHint::Capture(capture_index)) => query_match
                         .captures
                         .get(*capture_index)
                         .and_then(|c| std::str::from_utf8(&source_code[c.node.byte_range()]).ok()),
@@ -325,7 +326,7 @@ pub fn find_injections(
 struct AncestorRangeIterator<'it> {
     node: tree_sitter::Node<'it>,
     cursor: &'it mut tree_sitter::QueryCursor,
-    query: &'it config::ParentQuery,
+    query: &'it query_compiler::ParentQuery,
     source_code: &'it [u8],
 }
 

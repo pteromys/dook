@@ -1,0 +1,43 @@
+version: 4
+parser:
+  tarball:
+    name: cpp
+    sha256hex: 4333032439bef29e71c4d7a8d3acb0c4a498dc9d767980419859ed6fbeeeef29
+    subdirectory: src
+    url: https://github.com/tree-sitter/tree-sitter-cpp/releases/download/v0.23.4/tree-sitter-cpp.tar.xz
+definition_query: |
+  [
+    (preproc_def name: (_) @name)
+    (function_declarator declarator: [
+      (_) @name
+      (_ declarator: (_) @name)
+      (_ declarator: (qualified_identifier ("::" (_) @name)))
+      (_ declarator: (qualified_identifier (qualified_identifier ("::" (_) @name))))
+      (_ declarator: (template_function name: (_) @name))])
+    (struct_specifier name: (_) @name)
+    (_ declarator: [
+      (identifier) @name
+      (field_identifier) @name
+      (type_identifier) @name
+      (template_function) @name
+      (template_function name: (_) @name)])
+    (namespace_definition name: (_) @name)
+    (type_parameter_declaration (type_identifier) @name)
+    (class_specifier (type_identifier) @name)
+    (field_initializer (field_identifier) @name)
+    (assignment_expression left: [
+      (_) @name
+      (pointer_expression argument: (_) @name)
+      (pointer_expression argument: (pointer_expression argument: (_) @name))
+      (field_expression field: (_) @name)])
+  ] @def
+sibling_node_types:
+- comment
+- template_parameter_list
+parent_query: |
+  (namespace_definition body: (_) @exclude)
+  (type_definition type: (_) @exclude)
+  (function_declarator)
+  (function_definition body: (_) @exclude)
+  (struct_specifier body: (_) @exclude)
+  (class_specifier body: (_) @exclude)

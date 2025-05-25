@@ -1,0 +1,56 @@
+version: 4
+parser:
+  tarball:
+    name: typescript
+    sha256hex: 2d324af0616a692cc6fcaea35442a816decb2ef0d05242953cb1feb15a5dc72d
+    subdirectory: typescript/src
+    url: https://github.com/tree-sitter/tree-sitter-typescript/releases/download/v0.23.2/tree-sitter-typescript.tar.xz
+definition_query: |
+  [
+    (function_signature name: (_) @name)
+    (function_declaration name: (_) @name)
+    (function_expression name: (_) @name)
+    (method_signature name: (_) @name)
+    (method_definition name: (_) @name)
+    (abstract_method_signature name: (_) @name)
+    (abstract_class_declaration name: (_) @name)
+    (module name: (_) @name)
+    (required_parameter pattern: [
+      (identifier) @name
+      (rest_pattern (identifier) @name)])
+    (variable_declarator name: (_) @name)
+    (array_pattern (identifier) @name)
+    (pair_pattern value: (identifier) @name)
+    (shorthand_property_identifier_pattern) @name
+    (assignment_expression left: [
+      (_) @name
+      (member_expression property: (_) @name)
+      (member_expression object: (_) @name property: ((property_identifier) @prototype (#eq? @prototype "prototype")))
+      (member_expression object: (member_expression object: (_) @name property: ((property_identifier) @prototype (#eq? @prototype "prototype"))))])
+    (class_declaration name: (_) @name)
+    (type_alias_declaration name: (_) @name)
+    (interface_declaration name: (_) @name)
+    (enum_declaration name: (_) @name)
+    (enum_assignment name: (_) @name)
+    (_ key: [(property_identifier) @name (string (string_fragment) @name)] value: (_))
+    (_ key: [(property_identifier) @name (string (string_fragment) @name)] type: (_))
+    (property_signature (property_identifier) @name)
+    (public_field_definition name: (property_identifier) @name)
+    (import_statement (import_clause (named_imports (import_specifier alias: (_) @name))))
+    (export_statement (export_clause (export_specifier alias: (_) @name)))
+  ] @def
+  (enum_body (property_identifier) @name @def)
+sibling_node_types:
+- comment
+parent_query: |
+  (function_declaration body: (_) @exclude)
+  (method_definition body: (_) @exclude)
+  (arrow_function body: (_) @exclude)
+  (class_declaration body: (_) @exclude)
+  (type_alias_declaration value: (_) @exclude)
+  (interface_declaration body: (_) @exclude)
+  (enum_declaration body: (_) @exclude)
+  (property_signature type: (_) @exclude)
+  (pair value: (_) @exclude)
+  (variable_declarator value: (_) @exclude)
+  (assignment_expression right: (_) @exclude)

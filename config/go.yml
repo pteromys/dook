@@ -1,0 +1,22 @@
+version: 4
+parser:
+  tarball:
+    name: go
+    sha256hex: 33bc3b44de1d7b815f52fe9f42e49786c5833d9181fd59fd6910c19c82559229
+    subdirectory: src
+    url: https://github.com/tree-sitter/tree-sitter-go/releases/download/v0.23.4/tree-sitter-go.tar.xz
+definition_query: |
+  [
+    (type_spec name: (_) @name)
+    (function_declaration name: (_) @name)
+    (method_declaration name: (_) @name)
+    (field_declaration name: (_) @name)
+    (parameter_declaration name: (_) @name)
+    (assignment_statement left: (_) @name)
+  ] @def
+sibling_node_types:
+- comment
+parent_query: |
+  (type_spec type: (_) @exclude)
+  (function_declaration body: (_) @exclude)
+  (method_declaration body: (_) @exclude)

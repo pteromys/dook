@@ -11,7 +11,7 @@ repository = "https://github.com/pteromys/dook"
 readme = "README.md"
 keywords = ["search", "grep", "tree-sitter", "code-search"]
 categories = ["command-line-utilities", "development-tools"]
-include = ["/assets", "/.cargo", "/CHANGES.md", "/dook.svg", "/LICENSE", "/pyproject.toml", "/README.md", "!.ruff_cache", "/src", "/test_cases", "/tests"]
+include = ["/assets", "/.cargo", "/CHANGES.md", "/config", "/dook.svg", "/LICENSE", "/pyproject.toml", "/README.md", "!.ruff_cache", "/src", "/test_cases", "/tests"]
 
 [features]
 stdin = []

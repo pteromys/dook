@@ -1,0 +1,12 @@
+version: 4
+parser:
+  tarball:
+    name: css
+    sha256hex: 5d442e8b04d8c743603172fb02664ae2b404f38f7a871d97cf2c89c1eedf8251
+    subdirectory: tree-sitter-css-0.23.2/src
+    url: https://github.com/tree-sitter/tree-sitter-css/archive/refs/tags/v0.23.2.tar.gz
+definition_query: |
+  (class_selector (class_name) @name) @def
+  (id_selector (id_name) @name) @def
+parent_query: |
+  (rule_set)
