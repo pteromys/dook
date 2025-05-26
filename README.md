@@ -7,16 +7,10 @@ Find code definitions using [tree-sitter](https://tree-sitter.github.io/) and [r
 
 ## Installation
 
-Install [ripgrep](https://github.com/BurntSushi/ripgrep) and [bat](https://github.com/sharkdp/bat). Build and install with:
+Install [ripgrep](https://github.com/BurntSushi/ripgrep) and [bat](https://github.com/sharkdp/bat). Then:
 
 ```sh
-cargo install dook
-```
-
-If you want support for `--stdin`, which needs an unreleased version of `hyperpolyglot`:
-
-```sh
-cargo install --git https://github.com/pteromys/dook -F stdin
+uv tool install dook
 ```
 
 If you want completion assistance in bash or zsh, install either:
@@ -54,6 +48,14 @@ Also attempts to find assignments, class definitions, etc—because why should y
 - TeX (as LaTeX; requires the [tree-sitter CLI](https://tree-sitter.github.io/tree-sitter/creating-parsers/1-getting-started.html#installation))
 - YAML
 
+## How to add a language
+
+1. Create `~/.config/dook/somelanguage.yml`, where `somelanguage` is one of the keys in `src/language_aliases.rs`. Crib from any of the files in `config/`. (`python.yml` is probably a decent example.)
+2. Create a trimmed-down version of the scenario that motivated you to add this language, and put it in `test_cases/`, named anything you like.
+3. Use `dook` with this language for a week or two. Every time you edit .yml file, consider adding a corresponding example to the file you created in `test_cases/`.
+
+If you want to roll the dice on submitting a PR (see below), copy your .yml file to `config/` and submit a patch adding that and your file from `test_cases/`. If you're familiar with Rust, add a constant for your language to `LanguageName` and your list of example search terms to `tests/examples.rs`. Otherwise I'll add those for you if I ever respond.
+
 ## Alternatives and prior art
 
 - [symbex](https://github.com/simonw/symbex): find a definition in python, plus some other operating modes; aimed at [slicing/splicing code as input/output to an LLM](https://simonwillison.net/2023/Jun/18/symbex/).
@@ -79,11 +81,18 @@ Also attempts to find assignments, class definitions, etc—because why should y
 
 ## Possible future work
 
-- more languages (and tests in more languages 😱)
+- keep adding more languages
 - show all calls to a function instead (`git grep -W` already gets mostly there so I care less)
-- end this project and make it instead a feature of ripgrep (may not be viable because the parsers for all the languages add up to a pretty large binary size; then again maybe [rubicon](https://crates.io/crates/rubicon) offers some hope)
+- add a recontextualize mode—pipe in ripgrep output to make it look like `git grep -W` output—which really ought to be an independent utility but would benefit from dook's definitions of what counts as a parent
 - make better patterns (particularly for C and C++) now that I'm on tree-sitter 0.23
+- descend into external libraries and standard libraries if there's a sane way to look for them
 
 ## License
 
 [MIT](./LICENSE)
+
+## Contributing
+
+Contribute at your own risk! I might ignore your PRs and issues for no good reason, close them without explanation, or rewrite them from scratch and forget to tell you.
+
+By submitting a PR, you agree to license your contributions under the MIT License, credited in [the changelog](./CHANGES.md) or somewhere reachable from this README.

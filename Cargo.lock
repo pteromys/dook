@@ -371,7 +371,7 @@ dependencies = [
 
 [[package]]
 name = "dook"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "base16ct",
  "clap 4.5.18",
