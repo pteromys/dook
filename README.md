@@ -56,6 +56,15 @@ Also attempts to find assignments, class definitions, etc—because why should y
 
 If you want to roll the dice on submitting a PR (see below), copy your .yml file to `config/` and submit a patch adding that and your file from `test_cases/`. If you're familiar with Rust, add a constant for your language to `LanguageName` and your list of example search terms to `tests/examples.rs`. Otherwise I'll add those for you if I ever respond.
 
+## Files
+
+Create `~/.config/dook/downloads_policy.txt` containing the text `yes`, `ask`, or `no` to control what dook does when it needs to download a language parser from the internet. The default is `ask` (ask for confirmation every time). If you're paranoid, you might prefer to use `ask` for a week and then switch to `no` to get pager integration.
+
+dook creates and uses the following directories for storage:
+
+- `~/.cache/dook/sources` for downloaded parsers
+- `~/.cache/tree-sitter` for compiled parsers, using [tree-sitter-loader](https://crates.io/crates/tree-sitter-loader)
+
 ## Alternatives and prior art
 
 - [symbex](https://github.com/simonw/symbex): find a definition in python, plus some other operating modes; aimed at [slicing/splicing code as input/output to an LLM](https://simonwillison.net/2023/Jun/18/symbex/).
