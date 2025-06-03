@@ -536,6 +536,7 @@ impl ConfigLoader {
         let files = self.files.insert(Default::default());
         let dir_entries = match std::fs::read_dir(self.config_dir.as_ref()?) {
             Ok(d) => d,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
             Err(e) => {
                 log::error!("{}", e);
                 return None;
