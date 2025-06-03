@@ -13,6 +13,8 @@ Install [ripgrep](https://github.com/BurntSushi/ripgrep), [bat](https://github.c
 uv tool install dook
 ```
 
+(It's also on crates.io if you want to build it yourself. Or if you want to be on the cutting edge you can instead `cargo install --git https://github.com/pteromys/dook -F stdin,static_python`.)
+
 If you want completion assistance in bash or zsh, install either:
 
 - assets/completions/dook.bash as `~/.local/share/bash-completion/completions/dook` or

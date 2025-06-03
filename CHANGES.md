@@ -1,10 +1,11 @@
 changelog 🧚
 ============
 
-## Unreleased
+## 0.3.1 (2025-06-03)
 
-- Fixes:
-  - rust: recognize field initializers
+- Fix some missed recognitions in Rust:
+  - struct field initializers
+  - `use X as Y;`
 
 ## 0.3.0 (2025-06-02)
 
