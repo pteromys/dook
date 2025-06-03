@@ -32,7 +32,8 @@ _dook () {
 		'--dump=[Dump syntax tree of a file]:file to dump:_files' \
 		'--only-names[Print only names matching the pattern]' \
 		'*'{'-i','--ignore-case'}'[Case insensitive; 2x to interconvert kebab/camel/snake case]' \
-		'--verbose[Print progress messages]' \
+		{'-v','--verbose'}'[Print progress messages]' \
+		{'-V','--version'}'[Print version]' \
 		{'-h','--help'}'[Print help]' \
 		'*: :{_dook_symbols}'
 }

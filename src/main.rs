@@ -125,6 +125,10 @@ struct Cli {
     /// Print unstructured messages about progress, for diagnostics.
     #[arg(short, long, action = clap::ArgAction::Count)]
     verbose: u8,
+
+    /// Print version number and exit.
+    #[arg(short = 'V', long)]
+    version: bool,
 }
 
 macro_attr_2018::macro_attr! {
@@ -184,6 +188,10 @@ fn main_inner() -> Result<std::process::ExitCode, DookError> {
 
     // grab cli args
     let cli = Cli::parse();
+    if cli.version {
+        println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+        return Ok(std::process::ExitCode::SUCCESS);
+    }
     let use_color = if cli.color != EnablementLevel::Auto {
         cli.color
     } else if console::colors_enabled() {

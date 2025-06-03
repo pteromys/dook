@@ -43,6 +43,7 @@ changelog 🧚
   - `--only-names` to print matching names but not defs (used for completions)
   - `--download=yes|no|ask` to control whether to download parsers (`--offline` = `--download=no`)
   - `--verbose` to litter console output with unstructured progress messages
+  - `--version` to print version and exit
   - `--ignore-case` (or `-i`) to search case-insensitively. Use twice to search
     kebab/camel/snake/[whatever supported](https://crates.io/crates/heck) cases
     in one go.
