@@ -1,6 +1,11 @@
 changelog 🧚
 ============
 
+## Unreleased
+
+- Fixes:
+  - rust: recognize field initializers
+
 ## 0.3.0 (2025-06-02)
 
 ### Breaking changes

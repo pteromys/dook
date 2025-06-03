@@ -37,6 +37,7 @@ definition_query: |
     (type_item name: (_) @name)
     (union_item name: (_) @name)
     (field_declaration name: (_) @name)
+    (field_initializer field: (_) @name)
   ] @def
 sibling_node_types:
 - line_comment
@@ -49,6 +50,7 @@ parent_query: |
   (enum_item body: (_) @exclude)
   (macro_invocation (token_tree) @exclude)
   (trait_item body: (_) @exclude)
+  (struct_expression body: (_) @exclude)
 injection_query: |
   (macro_invocation
     (token_tree) @injection.content
