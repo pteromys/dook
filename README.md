@@ -7,7 +7,7 @@ Find code definitions using [tree-sitter](https://tree-sitter.github.io/) and [r
 
 ## Installation
 
-Install [ripgrep](https://github.com/BurntSushi/ripgrep) and [bat](https://github.com/sharkdp/bat). Then:
+Install [ripgrep](https://github.com/BurntSushi/ripgrep), [bat](https://github.com/sharkdp/bat), and [uv](https://docs.astral.sh/uv/getting-started/installation/). Then:
 
 ```sh
 uv tool install dook
