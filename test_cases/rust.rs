@@ -2,7 +2,7 @@
 pub enum PotorooTreat<'a> {
     Apple,
     SweetPotato(&'a str),
-    Bug,
+    Bug { head: u8, thorax: u8, abdomen: u8 },
 }
 
 pub trait Treat {
@@ -14,3 +14,14 @@ impl Treat for PotorooTreat<'_> {
         println!("all gone!");
     }
 }
+
+fn make_bug() -> PotorooTreat<'static> {
+    let abdomen: u8 = 2;
+    PotorooTreat::Bug {
+        head: 0,
+        thorax: 1,
+        abdomen,
+    }
+}
+
+pub use make_bug as hatch;

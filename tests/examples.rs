@@ -222,6 +222,9 @@ fn rust() {
         ("Bug", vec![2..2, 5..5]),
         ("Treat", vec![8..10, 12..16]),
         ("eat", vec![8..9, 12..15]),
+        ("thorax", vec![2..2, 5..5, 18..18, 20..20, 22..22]),
+        ("abdomen", vec![2..2, 5..5, 18..20, 23..23]),
+        ("hatch", vec![27..27]),
     ];
     verify_multipass_examples(
         LanguageName::RUST,

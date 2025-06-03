@@ -38,6 +38,8 @@ definition_query: |
     (union_item name: (_) @name)
     (field_declaration name: (_) @name)
     (field_initializer field: (_) @name)
+    (shorthand_field_initializer (identifier) @name)
+    (use_as_clause alias: (_) @name)
   ] @def
 sibling_node_types:
 - line_comment
