@@ -51,6 +51,7 @@ fn verify_multipass_examples(
         bytes: source.into(),
         language_name,
         recipe: None,
+        path: None,
     };
     for (query, expect_ranges) in cases {
         let current_pattern = regex::Regex::new(query).unwrap();

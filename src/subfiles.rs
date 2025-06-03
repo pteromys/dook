@@ -13,6 +13,7 @@ pub fn extract_subfiles(
                     None => "STDIN <to markdown>".to_string(),
                     Some(recipe) => format!("{recipe} <to markdown>"),
                 }),
+                path: None,
                 bytes: markdown_bytes,
                 language_name: LanguageName::MARKDOWN,
             }]

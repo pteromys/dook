@@ -17,6 +17,7 @@ impl std::fmt::Display for SearchInput<'_> {
 
 #[derive(Debug, Clone)]
 pub struct LoadedFile {
+    pub path: Option<std::path::PathBuf>,
     pub recipe: Option<String>,
     pub bytes: Vec<u8>,
     pub language_name: LanguageName,
@@ -63,11 +64,13 @@ impl LoadedFile {
     }
 
     fn load_as(path: impl AsRef<std::path::Path>, language_name: LanguageName) -> Result<Self, Error> {
+        let path = path.as_ref();
         Ok(Self {
             language_name,
-            bytes: std::fs::read(path.as_ref())
+            bytes: std::fs::read(path)
                 .map_err(|e| Error::UnreadableFile(e.to_string()))?,
-            recipe: Some(format!("cat {:#?}", path.as_ref())),
+            recipe: Some(format!("cat {:#?}", path)),
+            path: Some(path.to_owned()),
         })
     }
 
@@ -79,7 +82,8 @@ impl LoadedFile {
             Ok(_) if bytes.is_empty() => Err(Error::EmptyStdin),
             Ok(_) => detect_language_from_bytes(&bytes, None),
         }?;
-        Ok(LoadedFile {
+        Ok(Self {
+            path: None,
             recipe: None,
             bytes,
             language_name,
@@ -87,9 +91,12 @@ impl LoadedFile {
     }
 
     pub fn describe(&self) -> String {
-        match self.recipe.as_ref() {
-            None => "input".to_string(),
-            Some(recipe) => format!("{recipe:?}"),
+        match self.path.as_ref() {
+            Some(path) => format!("{path:#?}"),
+            None => match self.recipe.as_ref() {
+                None => "input".to_string(),
+                Some(recipe) => format!("{recipe:#?}"),
+            },
         }
     }
 }
